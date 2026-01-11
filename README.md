@@ -24,6 +24,7 @@ We focus on:
 | [CLAUDE.md Principles](./concepts/claude-md-principles.md) | How to write effective project instructions |
 | [CLAUDE.md Anti-Patterns](./concepts/claude-md-anti-patterns.md) | Common mistakes and how to fix them |
 | [Parallel Agents](./concepts/parallel-agents.md) | Run 5 agents simultaneously for faster results |
+| [Multi-AI Workflow](./concepts/multi-ai-workflow.md) | Coordinate Claude, Codex, and Gemini CLI |
 
 ### Practical Examples
 
