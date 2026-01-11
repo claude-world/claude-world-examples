@@ -3,7 +3,7 @@
 > Practical examples and best practices for mastering Claude Code - the official AI-powered CLI from Anthropic
 
 [![Website](https://img.shields.io/badge/Website-claude--world.com-blue)](https://claude-world.com)
-[![Discord](https://img.shields.io/badge/Discord-Join%20Community-7289da)](https://discord.gg/claude-code-builders)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Community-7289da)](https://discord.gg/rBtHzSD288)
 
 ## What is Claude World?
 
@@ -175,7 +175,7 @@ Choose the right model for each task:
 ## Community
 
 - **Website**: [claude-world.com](https://claude-world.com)
-- **Discord**: [Claude Code Builders Taiwan](https://discord.gg/claude-code-builders)
+- **Discord**: [Claude Code Builders Taiwan](https://discord.gg/rBtHzSD288)
 - **Twitter**: [@lukashanren1](https://twitter.com/lukashanren1)
 
 ## Contributing
@@ -189,7 +189,7 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guideline
 3. **Guides**: Write in-depth guides on specific topics
 4. **Translations**: Help translate content to other languages
 
-For discussions and questions, join our [Discord community](https://discord.gg/claude-code-builders).
+For discussions and questions, join our [Discord community](https://discord.gg/rBtHzSD288).
 
 ## License
 
