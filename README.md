@@ -39,6 +39,7 @@ We focus on:
 | Guide | Description |
 |-------|-------------|
 | [Quick Reference Cards](./guides/quick-reference.md) | One-page visual guides for fast lookup |
+| [Production Readiness](./guides/production-readiness.md) | Checklist before shipping to production |
 
 ## Quick Start
 
