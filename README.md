@@ -33,6 +33,12 @@ We focus on:
 | [Bug Hunting Pattern](./examples/bug-hunting.md) | Use parallel agents to find bugs fast |
 | [Feature Development](./examples/feature-development.md) | Structured approach to building features |
 
+### Guides
+
+| Guide | Description |
+|-------|-------------|
+| [Quick Reference Cards](./guides/quick-reference.md) | One-page visual guides for fast lookup |
+
 ## Quick Start
 
 ### 1. Install Claude Code
