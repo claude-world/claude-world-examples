@@ -33,6 +33,7 @@ We focus on:
 | [Simple CLAUDE.md](./examples/simple-claude-md.md) | A minimal but effective CLAUDE.md template |
 | [Bug Hunting Pattern](./examples/bug-hunting.md) | Use parallel agents to find bugs fast |
 | [Feature Development](./examples/feature-development.md) | Structured approach to building features |
+| [Refactoring Patterns](./examples/refactoring-patterns.md) | Systematic code improvement with Claude |
 
 ### Guides
 
@@ -100,7 +101,7 @@ You: [reviews the completed work]
 
 - **Website**: [claude-world.com](https://claude-world.com)
 - **Discord**: [Claude Code Builders Taiwan](https://discord.gg/claude-code-builders)
-- **Twitter**: [@anthropic](https://twitter.com/anthropic)
+- **Twitter**: [@lukashanren1](https://twitter.com/lukashanren1)
 
 ## Contributing
 
