@@ -40,6 +40,7 @@ We focus on:
 |-------|-------------|
 | [Quick Reference Cards](./guides/quick-reference.md) | One-page visual guides for fast lookup |
 | [Production Readiness](./guides/production-readiness.md) | Checklist before shipping to production |
+| [Security Best Practices](./guides/security-best-practices.md) | Build secure applications from the start |
 
 ## Quick Start
 
