@@ -185,4 +185,4 @@ Average bug fix time with this pattern: **2-5 minutes**
 
 ---
 
-See also: [CEO Mode Basics](../concepts/ceo-mode-basics.md)
+See also: [Director Mode Basics](../concepts/director-mode-basics.md)

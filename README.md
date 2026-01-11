@@ -2,7 +2,7 @@
 
 > Practical examples and best practices for mastering Claude Code
 
-[![Website](https://img.shields.io/badge/Website-claudeworld.dev-blue)](https://claudeworld.dev)
+[![Website](https://img.shields.io/badge/Website-claude--world.com-blue)](https://claude-world.com)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Community-7289da)](https://discord.gg/claude-code-builders)
 
 ## What is Claude World?
@@ -10,7 +10,7 @@
 Claude World is a community dedicated to helping developers master **Claude Code** - Anthropic's official CLI for AI-assisted software development.
 
 We focus on:
-- **CEO Mode** - A mindset shift from "AI assistant" to "AI team member"
+- **Director Mode** - A mindset shift from "hands-on developer" to "team director"
 - **Efficient Workflows** - Parallel agents, minimal interruption
 - **Best Practices** - Battle-tested patterns from real projects
 
@@ -20,7 +20,7 @@ We focus on:
 
 | Example | Description |
 |---------|-------------|
-| [CEO Mode Basics](./concepts/ceo-mode-basics.md) | The mindset shift that 10x your productivity |
+| [Director Mode Basics](./concepts/director-mode-basics.md) | The mindset shift that 10x your productivity |
 | [CLAUDE.md Principles](./concepts/claude-md-principles.md) | How to write effective project instructions |
 | [Parallel Agents](./concepts/parallel-agents.md) | Run 5 agents simultaneously for faster results |
 
@@ -60,7 +60,7 @@ npm install -g @anthropic-ai/claude-code
 claude
 ```
 
-## The CEO Mode Mindset
+## The Director Mode Mindset
 
 Traditional approach:
 ```
@@ -72,7 +72,7 @@ You: [answers questions]
 Claude: [finally starts working]
 ```
 
-CEO Mode approach:
+Director Mode approach:
 ```
 You: "Fix the login bug"
 Claude: [immediately launches 3 parallel agents]
@@ -84,11 +84,11 @@ Claude: [immediately launches 3 parallel agents]
 You: [reviews the completed work]
 ```
 
-**Key principle**: You're the CEO. Claude is your autonomous team. Give clear direction, let them execute.
+**Key principle**: You're the Director. Claude is your autonomous team. Define goals, let them execute.
 
 ## Community
 
-- **Website**: [claudeworld.dev](https://claudeworld.dev)
+- **Website**: [claude-world.com](https://claude-world.com)
 - **Discord**: [Claude Code Builders Taiwan](https://discord.gg/claude-code-builders)
 - **Twitter**: [@anthropic](https://twitter.com/anthropic)
 

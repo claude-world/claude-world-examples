@@ -1,6 +1,6 @@
-# CEO Mode Basics
+# Director Mode Basics
 
-> Stop being a micromanager. Start being a CEO.
+> Stop being a hands-on developer. Start being a team director.
 
 ## The Problem
 
@@ -19,16 +19,16 @@ Developer: "Yes"
 
 This is **inefficient**. You're spending more time answering questions than getting work done.
 
-## The CEO Mode Solution
+## The Director Mode Solution
 
-Think of yourself as a CEO, and Claude as your development team.
+Think of yourself as a team director, and Claude as your development team.
 
-A good CEO doesn't:
+A good director doesn't:
 - Answer every small question
 - Approve every minor decision
 - Micromanage implementation details
 
-A good CEO does:
+A good director does:
 - Set clear objectives
 - Provide context and constraints
 - Trust the team to execute
@@ -75,8 +75,8 @@ Instead of watching every step:
 
 ## The Mindset Shift
 
-| Micromanager | CEO Mode |
-|--------------|----------|
+| Micromanager | Director Mode |
+|--------------|---------------|
 | Answers every question | Provides context upfront |
 | Approves each step | Reviews completed work |
 | Single-threaded work | Parallel agents |
