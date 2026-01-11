@@ -42,6 +42,13 @@ We focus on:
 | [Quick Reference Cards](./guides/quick-reference.md) | One-page visual guides for fast lookup |
 | [Production Readiness](./guides/production-readiness.md) | Checklist before shipping to production |
 | [Security Best Practices](./guides/security-best-practices.md) | Build secure applications from the start |
+| [Specification-Driven Development](./guides/specification-driven-development.md) | Write specs first, implement reliably |
+
+### Templates
+
+| Template | Description |
+|----------|-------------|
+| [CLAUDE.md by Framework](./templates/claude-md-templates.md) | Ready-to-use templates for React, Next.js, Python, Go, and more |
 
 ## Quick Start
 
