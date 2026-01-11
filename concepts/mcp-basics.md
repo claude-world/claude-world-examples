@@ -153,16 +153,18 @@ MCP servers follow Claude Code's four-layer hierarchy:
 │  Use: Personal MCP servers (github, etc.)    │
 ├─────────────────────────────────────────────┤
 │  Layer 3: Project                            │
-│  Location: .claude/settings.json             │
+│  Location: .mcp.json (NOT settings.json)     │
 │  Use: Project-specific (db, memory)          │
 ├─────────────────────────────────────────────┤
 │  Layer 4: Project Local                      │
-│  Location: .claude/settings.local.json       │
+│  Location: .mcp.local.json                   │
 │  Use: Personal overrides (gitignored)        │
 └─────────────────────────────────────────────┘
 ```
 
-**Priority:** Local > Project > User > Enterprise
+> **Important:** Project-scoped MCP servers are stored in `.mcp.json` (not `.claude/settings.json`). Use `claude mcp add --scope project` which automatically creates/updates the correct file.
+
+**Priority:** Local (.mcp.local.json) > Project (.mcp.json) > User (~/.claude.json) > Enterprise (/etc/claude-code/settings.json)
 
 ## MCP Context Cost
 
@@ -185,7 +187,9 @@ Each MCP server consumes context tokens. Be mindful:
 
 ## Configuration Files
 
-### Project Settings (.claude/settings.json)
+> **Important:** Project MCP servers go in `.mcp.json`, not `.claude/settings.json`. Always use `claude mcp add --scope project` to create correct configuration.
+
+### Project MCP Configuration (.mcp.json)
 
 ```json
 {
@@ -201,8 +205,23 @@ Each MCP server consumes context tokens. Be mindful:
         "MEMORY_FILE_PATH": "./.claude/memory.json"
       }
     }
-  },
-  "enableAllProjectMcpServers": true
+  }
+}
+```
+
+### User Global Configuration (~/.claude.json)
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
+    }
+  }
 }
 ```
 

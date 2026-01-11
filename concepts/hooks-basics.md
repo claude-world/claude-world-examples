@@ -21,6 +21,10 @@ Hooks let you automatically intercept, validate, and modify Claude's actions. Th
 | `PostToolUse` | After tool runs | Audit, react, trigger follow-ups |
 | `Stop` | Claude stops | Verify completion criteria |
 | `SubagentStop` | Subagent completes | Ensure subagent task completion |
+| `SessionEnd` | Session ends | Cleanup, final logging |
+| `PermissionRequest` | Permission needed | Approve/deny permission requests |
+
+> **Note:** Additional events like `Notification` and `PreCompact` may be available in newer versions. Check `claude --version` and official docs for latest event types.
 
 ## Hook Flow
 
@@ -77,19 +81,25 @@ Hooks are configured in `.claude/settings.json`:
 
 ### 1. Prompt Hooks
 
-Use Claude to evaluate conditions:
+Use Claude to evaluate conditions. Prompt hooks receive context via stdin JSON and respond with JSON:
 
 ```json
 {
   "type": "prompt",
-  "prompt": "Check if command is destructive. Return 'approve' or 'block'."
+  "prompt": "Check if command is destructive. Return {\"ok\": true} or {\"ok\": false, \"reason\": \"explanation\"}."
 }
 ```
 
-**Response options:**
-- `approve` - Allow the action
-- `deny` / `block` - Block the action
-- `ask` - Ask user for confirmation
+**Response format (JSON):**
+```json
+// Allow the action
+{"ok": true}
+
+// Block with reason
+{"ok": false, "reason": "Command contains rm -rf on system path"}
+```
+
+> **Important:** Prompt hooks must return valid JSON. Plain text responses like "approve" or "block" will not work correctly.
 
 ### 2. Command Hooks
 
@@ -146,7 +156,7 @@ Run shell commands:
       "matcher": "Bash",
       "hooks": [{
         "type": "prompt",
-        "prompt": "Block if command contains rm -rf, DROP TABLE, or git push --force. Return 'block' or 'approve'."
+        "prompt": "If command contains rm -rf on system paths, DROP TABLE, or git push --force, return {\"ok\": false, \"reason\": \"destructive command blocked\"}. Otherwise return {\"ok\": true}."
       }]
     }]
   }
@@ -221,7 +231,7 @@ Run shell commands:
       "matcher": "Bash",
       "hooks": [{
         "type": "prompt",
-        "prompt": "Block destructive commands (rm -rf, DROP TABLE). Return 'block' or 'approve'."
+        "prompt": "If command is destructive (rm -rf, DROP TABLE), return {\"ok\": false, \"reason\": \"blocked\"}. Otherwise return {\"ok\": true}."
       }]
     }]
   }
@@ -244,6 +254,32 @@ Run shell commands:
 - **Timeout:** Hooks have a 10-minute timeout (v2.1.3+). Long-running hooks will be terminated.
 - **Sequential execution:** Hooks in a chain execute sequentially. If one blocks, subsequent hooks are skipped.
 - **Error handling:** Use `onFailure` to control behavior when hooks fail.
+
+## Environment Variables
+
+Hooks have access to these environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `CLAUDE_PROJECT_DIR` | Project root directory path |
+| `CLAUDE_ENV_FILE` | Path to `.env` file for environment persistence |
+| `CLAUDE_CODE_REMOTE` | Remote repository URL (if git repo) |
+
+> **CLAUDE_ENV_FILE:** Critical for `SessionStart` hooks that need to persist environment variables across bash commands. Set this to point to your project's `.env` file.
+
+### Hook Input (stdin JSON)
+
+For `PreToolUse` and `PostToolUse` hooks, context is provided via stdin:
+
+```json
+{
+  "tool_name": "Bash",
+  "tool_input": {"command": "npm test"},
+  "cwd": "/path/to/project"
+}
+```
+
+> **Note:** The examples in this documentation use simplified prompts. In production, hooks receive structured JSON input and must return JSON responses.
 
 ## Related Resources
 

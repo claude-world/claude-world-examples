@@ -30,7 +30,7 @@ This guide provides complete, copy-paste-ready hook patterns organized by use ca
       "matcher": "Bash",
       "hooks": [{
         "type": "prompt",
-        "prompt": "Analyze this command for destructive operations. Block if it contains: rm -rf (with root/home paths), DROP TABLE, DROP DATABASE, git push --force, git reset --hard (affecting remote), DELETE FROM without WHERE, TRUNCATE TABLE. Return 'block: [reason]' or 'approve'."
+        "prompt": "Analyze the bash command for destructive operations. Block if it contains: rm -rf (with root/home paths), DROP TABLE, DROP DATABASE, git push --force, git reset --hard (affecting remote), DELETE FROM without WHERE, TRUNCATE TABLE. Return {\"ok\": true} or {\"ok\": false, \"reason\": \"explanation\"}."
       }]
     }]
   }
@@ -53,13 +53,13 @@ This guide provides complete, copy-paste-ready hook patterns organized by use ca
       "matcher": "Write",
       "hooks": [{
         "type": "prompt",
-        "prompt": "Check if target file is sensitive. Block writes to: .env, .env.*, **/secrets/*, **/credentials/*, **/private/*, *.pem, *.key, id_rsa*, config/production.*. Return 'block: Protected file' or 'approve'."
+        "prompt": "Check if the target file path is sensitive. Block writes to: .env, .env.*, secrets/, credentials/, private/, *.pem, *.key, id_rsa*, config/production.*. Return {\"ok\": true} or {\"ok\": false, \"reason\": \"Protected file\"}."
       }]
     }, {
       "matcher": "Edit",
       "hooks": [{
         "type": "prompt",
-        "prompt": "Check if target file is sensitive. Block edits to: .env, .env.*, **/secrets/*, **/credentials/*, **/private/*, *.pem, *.key, id_rsa*, config/production.*. Return 'block: Protected file' or 'approve'."
+        "prompt": "Check if the target file path is sensitive. Block edits to: .env, .env.*, secrets/, credentials/, private/, *.pem, *.key, id_rsa*, config/production.*. Return {\"ok\": true} or {\"ok\": false, \"reason\": \"Protected file\"}."
       }]
     }]
   }
@@ -77,7 +77,7 @@ This guide provides complete, copy-paste-ready hook patterns organized by use ca
       "matcher": "Bash",
       "hooks": [{
         "type": "prompt",
-        "prompt": "If command contains 'git push': 1) Block if --force or -f flag present (say 'block: Force push requires manual execution'). 2) Block if pushing to main/master without PR (say 'block: Direct push to main requires confirmation'). 3) Otherwise approve. Return 'block: [reason]' or 'approve'."
+        "prompt": "If the bash command contains 'git push': 1) Block if --force or -f flag is present (return {\"ok\": false, \"reason\": \"Force push requires manual execution\"}). 2) Block if pushing to main/master without PR (return {\"ok\": false, \"reason\": \"Direct push to main requires confirmation\"}). 3) Otherwise return {\"ok\": true}."
       }]
     }]
   }
@@ -95,7 +95,7 @@ This guide provides complete, copy-paste-ready hook patterns organized by use ca
       "matcher": "Bash",
       "hooks": [{
         "type": "prompt",
-        "prompt": "If command is 'git add' or 'git commit', check staged content for secrets patterns: API keys (sk-*, pk_*, AKIA*), tokens, passwords in plain text, private keys. Block if found with 'block: Potential secret detected - review staged changes'. Otherwise approve."
+        "prompt": "If the bash command is 'git add' or 'git commit', check staged content for secrets patterns: API keys (sk-*, pk_*, AKIA*), tokens, passwords in plain text, private keys. If secrets are found, return {\"ok\": false, \"reason\": \"Potential secret detected - review staged changes\"}. Otherwise return {\"ok\": true}."
       }]
     }]
   }
@@ -110,14 +110,18 @@ This guide provides complete, copy-paste-ready hook patterns organized by use ca
 
 **Use case**: Ensure tests pass before any commit
 
+> **Note:** Command hooks receive tool input via stdin JSON. For bash commands that require parsing, use prompt hooks which can analyze the input and return JSON responses.
+
 ```json
 {
   "hooks": {
     "PreToolUse": [{
       "matcher": "Bash",
       "hooks": [{
+        "type": "prompt",
+        "prompt": "If the bash command is 'git commit' (with any flags), return {\"ok\": true} to proceed to the test runner. Otherwise return {\"ok\": true}. The next hook will run npm test.",
         "type": "command",
-        "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -q 'git commit'; then npm test; fi",
+        "command": "npm test --passWithNoTests",
         "onFailure": "block"
       }]
     }]
@@ -125,7 +129,7 @@ This guide provides complete, copy-paste-ready hook patterns organized by use ca
 }
 ```
 
-**Alternative with prompt-based detection**:
+**Simplified prompt-based version**:
 
 > **Note:** The `condition` syntax below is a conceptual example showing the intended behavior. In practice, Claude Code hooks are evaluated sequentially—if a prompt hook returns "approve", subsequent hooks in the chain will run.
 
@@ -153,46 +157,51 @@ This guide provides complete, copy-paste-ready hook patterns organized by use ca
 
 **Use case**: Auto-lint files after editing
 
+> **Note:** File path information is provided via stdin JSON to hooks. The example below shows a conceptual approach—actual implementation depends on your hook receiving the correct JSON structure.
+
 ```json
 {
   "hooks": {
     "PostToolUse": [{
       "matcher": "Edit",
       "hooks": [{
-        "type": "command",
-        "command": "npx eslint --fix \"$CLAUDE_FILE_PATH\" 2>/dev/null || true",
-        "onFailure": "ignore"
+        "type": "prompt",
+        "prompt": "After editing a file, run ESLint on it. Read the file path from the tool input and execute: npx eslint --fix [filepath]. If ESLint finds fixable issues, mention them. Return {\"ok\": true}."
       }]
     }, {
       "matcher": "Write",
       "hooks": [{
-        "type": "command",
-        "command": "npx eslint --fix \"$CLAUDE_FILE_PATH\" 2>/dev/null || true",
-        "onFailure": "ignore"
+        "type": "prompt",
+        "prompt": "After writing a file, run ESLint on it. Read the file path from the tool input and execute: npx eslint --fix [filepath]. If ESLint finds fixable issues, mention them. Return {\"ok\": true}."
       }]
     }]
   }
 }
 ```
+
+> **Alternative:** For linting that doesn't depend on file path context, use `git ls-files | xargs eslint` to lint all tracked files.
 
 ### 7. TypeScript Compile Check
 
 **Use case**: Verify TypeScript compiles after changes
 
+> **Note:** This pattern uses a prompt hook to check if TypeScript files were modified, then runs the compiler.
+
 ```json
 {
   "hooks": {
     "PostToolUse": [{
       "matcher": "Edit",
       "hooks": [{
-        "type": "command",
-        "command": "if [[ \"$CLAUDE_FILE_PATH\" == *.ts ]] || [[ \"$CLAUDE_FILE_PATH\" == *.tsx ]]; then npx tsc --noEmit 2>&1 | head -20; fi",
-        "onFailure": "warn"
+        "type": "prompt",
+        "prompt": "If the edited file has .ts or .tsx extension, run: npx tsc --noEmit. Report any TypeScript errors. Return {\"ok\": true}."
       }]
     }]
   }
 }
 ```
+
+> **Alternative:** Run TypeScript compiler on all files without conditional checks:
 
 ### 8. Verify Tests Exist
 
@@ -424,20 +433,42 @@ Here's a comprehensive hooks configuration combining multiple patterns:
 
 ---
 
-## Environment Variables
+## Environment Variables and Hook Input
 
-> **Version Note:** Environment variables for hooks were introduced in Claude Code v2.0.60+. The exact variables available may vary by version.
+### Available Environment Variables
 
-Hooks can access these environment variables:
+Hooks have access to these environment variables:
 
-| Variable | Description | Available In |
-|----------|-------------|--------------|
-| `CLAUDE_TOOL_INPUT` | The tool's input/arguments | PreToolUse, PostToolUse |
-| `CLAUDE_TOOL_OUTPUT` | The tool's output/result | PostToolUse |
-| `CLAUDE_FILE_PATH` | Target file path (Edit/Write/Read) | PreToolUse, PostToolUse |
-| `CLAUDE_SESSION_ID` | Current session identifier | All hooks |
+| Variable | Description |
+|----------|-------------|
+| `CLAUDE_PROJECT_DIR` | Project root directory path |
+| `CLAUDE_ENV_FILE` | Path to `.env` file for environment persistence |
+| `CLAUDE_CODE_REMOTE` | Remote repository URL (if git repo) |
 
-> **Tip:** Check your Claude Code version with `claude --version`. Environment variable availability may differ between versions.
+> **Important:** The examples in earlier sections that referenced `$CLAUDE_TOOL_INPUT` and `$CLAUDE_FILE_PATH` were conceptual. These variables are not available as environment variables.
+
+### Hook Input (stdin JSON)
+
+For `PreToolUse` and `PostToolUse` hooks, tool context is provided via stdin:
+
+```json
+{
+  "tool_name": "Bash" | "Edit" | "Write" | "Read",
+  "tool_input": { /* tool-specific input */ },
+  "cwd": "/path/to/project"
+}
+```
+
+For file operations (`Edit`, `Write`, `Read`), the `tool_input` contains:
+```json
+{
+  "file_path": "/path/to/file",
+  "old_string": "...",  // For Edit
+  "new_string": "..."   // For Edit/Write
+}
+```
+
+> **Recommendation:** Use prompt hooks which receive this JSON input and can intelligently process it, rather than command hooks that try to parse non-existent environment variables.
 
 ## Tips for Writing Hooks
 
