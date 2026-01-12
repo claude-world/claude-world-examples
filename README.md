@@ -4,6 +4,13 @@
 
 [![Website](https://img.shields.io/badge/Website-claude--world.com-blue)](https://claude-world.com)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Community-7289da)](https://discord.gg/rBtHzSD288)
+[![Version](https://img.shields.io/badge/version-1.0.0-green)](https://github.com/claude-world/claude-world-examples/releases/tag/v1.0.0)
+
+---
+
+**🎉 v1.0.0 Released!** Website is now live at [claude-world.com](https://claude-world.com) - built from zero to production in 48 hours using Claude Code + Director Mode.
+
+---
 
 ## What is Claude World?
 
@@ -199,4 +206,4 @@ MIT License - see [LICENSE](./LICENSE)
 
 Built with Claude Code by the Claude World community.
 
-*Last updated: 2026-01-12*
+*Last updated: 2026-01-13*
