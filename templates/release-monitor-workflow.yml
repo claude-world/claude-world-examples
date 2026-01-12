@@ -1,0 +1,323 @@
+# Release Monitor Workflow Template
+#
+# This workflow monitors a GitHub repository for new releases and sends notifications
+# using Claude API for content generation.
+#
+# Usage:
+# 1. Copy this file to .github/workflows/release-monitor.yml
+# 2. Update REPO_TO_MONITOR to your target repository
+# 3. Add required secrets (see below)
+# 4. Customize notification channels as needed
+#
+# Required Secrets:
+# - ANTHROPIC_API_KEY: Claude API key
+# - DISCORD_WEBHOOK_URL: Discord webhook (optional)
+#
+# Documentation: https://github.com/claude-world/claude-world-examples
+
+name: Release Monitor
+
+on:
+  # Check every hour
+  schedule:
+    - cron: '0 * * * *'
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      force_notify:
+        description: 'Force notification even if no new release'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  # ============================================
+  # CUSTOMIZE THESE VALUES
+  # ============================================
+  REPO_TO_MONITOR: owner/repo           # e.g., anthropics/claude-code
+  VERSION_FILE: .github/last-known-version.txt
+
+jobs:
+  # ============================================
+  # Job 1: Check for new releases
+  # ============================================
+  check-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      new_release: ${{ steps.check.outputs.new_release }}
+      version: ${{ steps.check.outputs.version }}
+      release_name: ${{ steps.check.outputs.release_name }}
+      release_url: ${{ steps.check.outputs.release_url }}
+      release_body: ${{ steps.check.outputs.release_body }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get latest release from target repo
+        id: fetch
+        run: |
+          echo "Fetching latest release from ${{ env.REPO_TO_MONITOR }}..."
+
+          RELEASE_JSON=$(curl -s "https://api.github.com/repos/${{ env.REPO_TO_MONITOR }}/releases/latest")
+
+          # Check for API errors
+          if echo "$RELEASE_JSON" | jq -e '.message' > /dev/null 2>&1; then
+            echo "Error: $(echo "$RELEASE_JSON" | jq -r '.message')"
+            exit 1
+          fi
+
+          VERSION=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+          RELEASE_NAME=$(echo "$RELEASE_JSON" | jq -r '.name')
+          RELEASE_URL=$(echo "$RELEASE_JSON" | jq -r '.html_url')
+          RELEASE_BODY=$(echo "$RELEASE_JSON" | jq -r '.body // "No release notes"' | head -c 3000)
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
+          echo "$RELEASE_BODY" > /tmp/release_body.txt
+
+          echo "Latest release: $VERSION"
+
+      - name: Check if new release
+        id: check
+        run: |
+          LATEST_VERSION="${{ steps.fetch.outputs.version }}"
+
+          if [ -f "${{ env.VERSION_FILE }}" ]; then
+            LAST_VERSION=$(cat "${{ env.VERSION_FILE }}")
+          else
+            LAST_VERSION="none"
+          fi
+
+          echo "Last known: $LAST_VERSION"
+          echo "Latest: $LATEST_VERSION"
+
+          if [ "$LATEST_VERSION" != "$LAST_VERSION" ] || [ "${{ github.event.inputs.force_notify }}" == "true" ]; then
+            echo "new_release=true" >> $GITHUB_OUTPUT
+            echo "🆕 New release detected!"
+          else
+            echo "new_release=false" >> $GITHUB_OUTPUT
+            echo "✓ No new release"
+          fi
+
+          echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "release_name=${{ steps.fetch.outputs.release_name }}" >> $GITHUB_OUTPUT
+          echo "release_url=${{ steps.fetch.outputs.release_url }}" >> $GITHUB_OUTPUT
+
+          # Base64 encode for safe multi-line output
+          BODY_B64=$(base64 -w 0 /tmp/release_body.txt)
+          echo "release_body=$BODY_B64" >> $GITHUB_OUTPUT
+
+      - name: Update last known version
+        if: steps.check.outputs.new_release == 'true'
+        run: |
+          mkdir -p $(dirname "${{ env.VERSION_FILE }}")
+          echo "${{ steps.check.outputs.version }}" > "${{ env.VERSION_FILE }}"
+
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add "${{ env.VERSION_FILE }}"
+          git diff --staged --quiet || git commit -m "chore: update last known version to ${{ steps.check.outputs.version }}"
+          git push || echo "Push failed or nothing to push"
+
+  # ============================================
+  # Job 2: Generate content with Claude API
+  # ============================================
+  generate-content:
+    needs: check-release
+    runs-on: ubuntu-latest
+    if: needs.check-release.outputs.new_release == 'true'
+    outputs:
+      summary: ${{ steps.generate.outputs.summary }}
+      features: ${{ steps.generate.outputs.features }}
+
+    steps:
+      - name: Generate content with Claude API
+        id: generate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          VERSION: ${{ needs.check-release.outputs.version }}
+          RELEASE_NAME: ${{ needs.check-release.outputs.release_name }}
+          RELEASE_URL: ${{ needs.check-release.outputs.release_url }}
+          RELEASE_BODY_B64: ${{ needs.check-release.outputs.release_body }}
+        run: |
+          # Decode release body
+          RELEASE_BODY=$(echo "$RELEASE_BODY_B64" | base64 -d)
+
+          # Create prompt
+          read -r -d '' PROMPT << 'PROMPT_EOF' || true
+          You are a developer advocate summarizing a software release.
+
+          Release Info:
+          - Version: $VERSION
+          - Name: $RELEASE_NAME
+          - URL: $RELEASE_URL
+          - Release Notes:
+          $RELEASE_BODY
+
+          Generate JSON with:
+          {
+            "summary": "One sentence summary of the release",
+            "features": "• Feature 1\n• Feature 2\n• Feature 3"
+          }
+
+          Output ONLY valid JSON, no markdown.
+          PROMPT_EOF
+
+          # Substitute variables
+          PROMPT=$(echo "$PROMPT" | sed "s|\$VERSION|$VERSION|g; s|\$RELEASE_NAME|$RELEASE_NAME|g; s|\$RELEASE_URL|$RELEASE_URL|g")
+          PROMPT=$(echo "$PROMPT" | sed "s|\$RELEASE_BODY|$RELEASE_BODY|g")
+
+          # Call Claude API
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "{
+              \"model\": \"claude-sonnet-4-20250514\",
+              \"max_tokens\": 1000,
+              \"messages\": [{\"role\": \"user\", \"content\": $(echo "$PROMPT" | jq -Rs .)}]
+            }")
+
+          # Check for API error
+          if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+            echo "API Error: $(echo "$RESPONSE" | jq -r '.error.message')"
+            exit 1
+          fi
+
+          # Extract content
+          CONTENT=$(echo "$RESPONSE" | jq -r '.content[0].text')
+
+          # Parse JSON and set outputs
+          SUMMARY=$(echo "$CONTENT" | jq -r '.summary')
+          FEATURES=$(echo "$CONTENT" | jq -r '.features')
+
+          echo "summary=$(echo "$SUMMARY" | base64 -w 0)" >> $GITHUB_OUTPUT
+          echo "features=$(echo "$FEATURES" | base64 -w 0)" >> $GITHUB_OUTPUT
+
+          echo "Generated summary: $SUMMARY"
+
+  # ============================================
+  # Job 3: Send Discord notification
+  # ============================================
+  notify-discord:
+    needs: [check-release, generate-content]
+    runs-on: ubuntu-latest
+    if: |
+      needs.check-release.outputs.new_release == 'true' &&
+      vars.DISCORD_WEBHOOK_URL != ''
+
+    steps:
+      - name: Send Discord notification
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          VERSION: ${{ needs.check-release.outputs.version }}
+          RELEASE_URL: ${{ needs.check-release.outputs.release_url }}
+          SUMMARY_B64: ${{ needs.generate-content.outputs.summary }}
+          FEATURES_B64: ${{ needs.generate-content.outputs.features }}
+        run: |
+          SUMMARY=$(echo "$SUMMARY_B64" | base64 -d)
+          FEATURES=$(echo "$FEATURES_B64" | base64 -d)
+
+          # Escape special characters for JSON
+          SUMMARY_ESCAPED=$(echo "$SUMMARY" | jq -Rs . | sed 's/^"//;s/"$//')
+          FEATURES_ESCAPED=$(echo "$FEATURES" | jq -Rs . | sed 's/^"//;s/"$//')
+
+          curl -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"🚀 New Release: $VERSION\",
+                \"description\": \"$SUMMARY_ESCAPED\",
+                \"url\": \"$RELEASE_URL\",
+                \"color\": 5763719,
+                \"fields\": [
+                  {
+                    \"name\": \"✨ What's New\",
+                    \"value\": \"$FEATURES_ESCAPED\"
+                  },
+                  {
+                    \"name\": \"🔗 Links\",
+                    \"value\": \"[View Release]($RELEASE_URL)\"
+                  }
+                ],
+                \"footer\": {
+                  \"text\": \"Release Monitor\"
+                },
+                \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+              }]
+            }"
+
+          echo "✅ Discord notification sent"
+
+  # ============================================
+  # Job 4: Create GitHub Issue (optional)
+  # ============================================
+  create-issue:
+    needs: [check-release, generate-content]
+    runs-on: ubuntu-latest
+    if: |
+      needs.check-release.outputs.new_release == 'true' &&
+      false  # Set to true to enable
+    permissions:
+      issues: write
+
+    steps:
+      - name: Create tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.check-release.outputs.version }}
+          RELEASE_URL: ${{ needs.check-release.outputs.release_url }}
+          SUMMARY_B64: ${{ needs.generate-content.outputs.summary }}
+        run: |
+          SUMMARY=$(echo "$SUMMARY_B64" | base64 -d)
+
+          gh issue create \
+            --title "🆕 New release: $VERSION" \
+            --body "## Release Summary
+
+          $SUMMARY
+
+          ## Links
+
+          - [Release Notes]($RELEASE_URL)
+
+          ## Tasks
+
+          - [ ] Review changes
+          - [ ] Update dependencies
+          - [ ] Test compatibility
+          - [ ] Update documentation" \
+            --label "release-tracking"
+
+# ============================================
+# CUSTOMIZATION NOTES
+# ============================================
+#
+# To add more notification channels:
+#
+# 1. Slack:
+#    - Add SLACK_WEBHOOK_URL secret
+#    - Create notify-slack job similar to notify-discord
+#
+# 2. Email:
+#    - Use a service like Resend, SendGrid, or AWS SES
+#    - Add API key as secret
+#
+# 3. Twitter/X:
+#    - Add X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET
+#    - Use OAuth 1.0a for posting
+#
+# 4. Auto-generate content:
+#    - Add generate-newsletter job
+#    - Use Claude API to generate markdown articles
+#    - Commit and push to repository
+#
+# See full example at:
+# https://github.com/claude-world/claude-world-examples/blob/main/examples/github-actions-automation.md

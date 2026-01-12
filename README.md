@@ -29,7 +29,8 @@ claude-world-examples/
 ├── concepts/           # Core concepts and mental models
 ├── examples/           # Practical code examples
 ├── guides/             # In-depth guides and tutorials
-└── templates/          # Ready-to-use CLAUDE.md templates
+├── templates/          # Ready-to-use templates (CLAUDE.md, workflows)
+└── case-studies/       # Real-world project case studies
 ```
 
 ## Content Overview
@@ -45,6 +46,7 @@ claude-world-examples/
 | [Memory System](./concepts/memory-system.md) | Build persistent project intelligence | Beginner |
 | [CLAUDE.md Anti-Patterns](./concepts/claude-md-anti-patterns.md) | Common mistakes and how to fix them | Intermediate |
 | [Parallel Agents](./concepts/parallel-agents.md) | Run 5 agents simultaneously for faster results | Intermediate |
+| [AI-Assisted Workflow](./concepts/ai-assisted-workflow.md) | Leverage Claude Code as a force multiplier | Intermediate |
 | [Multi-AI Workflow](./concepts/multi-ai-workflow.md) | Coordinate Claude, Codex, and Gemini CLI | Advanced |
 
 ### Practical Examples
@@ -57,6 +59,8 @@ claude-world-examples/
 | [Refactoring Patterns](./examples/refactoring-patterns.md) | Systematic code improvement with Claude | Code quality |
 | [Hooks Patterns](./examples/hooks-patterns.md) | Production-ready hook configurations | Automation |
 | [MCP Setup](./examples/mcp-setup.md) | Complete MCP configuration recipes | Integration |
+| [GitHub Actions Automation](./examples/github-actions-automation.md) | Build automated workflows with Claude API | CI/CD |
+| [Multi-Language Astro](./examples/multi-language-astro.md) | Complete multi-language website setup | i18n |
 
 ### Guides
 
@@ -74,6 +78,13 @@ claude-world-examples/
 | Template | Description |
 |----------|-------------|
 | [CLAUDE.md by Framework](./templates/claude-md-templates.md) | Ready-to-use templates for React, Next.js, Python, Go, and more |
+| [Release Monitor Workflow](./templates/release-monitor-workflow.yml) | GitHub Actions workflow for automated release monitoring |
+
+### Case Studies
+
+| Case Study | Description |
+|------------|-------------|
+| [48-Hour Website](./case-studies/48-hour-website.md) | Building claude-world.com from zero to production in 48 hours |
 
 ## Topics Covered on claude-world.com
 
