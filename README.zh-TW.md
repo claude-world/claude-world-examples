@@ -63,6 +63,11 @@ claude-world-examples/
 | [多語言 Astro](./examples/zh-TW/multi-language-astro.md) | 完整的多語言網站設定 | i18n |
 | [Supabase + Cloudflare](./examples/supabase-cloudflare-integration.md) | 免費託管與資料庫的全端整合 | 全端 |
 | [Newsletter 系統](./examples/newsletter-system.md) | 完整的多語言電子報架構 | 電子郵件 |
+| [內容管線](./examples/content-pipeline.md) | 自動化內容生成與分發 | 自動化 |
+| [社群媒體自動化](./examples/social-media-automation.md) | X/Threads API 與 Claude 生成貼文 | 社群 |
+| [RSS Feed Astro](./examples/rss-feed-astro.md) | Astro 多語言 RSS 訂閱源 | 內容 |
+| [React 元件](./examples/react-components.md) | Claude Code 專案常用 UI 模式 | UI |
+| [API 端點模式](./examples/api-endpoint-patterns.md) | Cloudflare Edge API 設計模式 | 後端 |
 
 ### 指南
 
@@ -74,6 +79,8 @@ claude-world-examples/
 | [生產環境準備](./guides/zh-TW/production-readiness.md) | 上線前的檢查清單 | 15 分鐘 |
 | [安全最佳實踐](./guides/zh-TW/security-best-practices.md) | 從一開始就建立安全的應用程式 | 20 分鐘 |
 | [規格驅動開發](./guides/zh-TW/specification-driven-development.md) | 先寫規格，可靠地實作 | 30 分鐘 |
+| [設計自訂 Agents](./guides/designing-agents.md) | 建立專案專屬的自訂代理 | 20 分鐘 |
+| [設計自訂 Skills](./guides/designing-skills.md) | 建立可重用的斜線指令工作流程 | 20 分鐘 |
 
 ### 模板
 

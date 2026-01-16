@@ -63,6 +63,11 @@ claude-world-examples/
 | [Multi-Language Astro](./examples/multi-language-astro.md) | Complete multi-language website setup | i18n |
 | [Supabase + Cloudflare](./examples/supabase-cloudflare-integration.md) | Full-stack with free hosting and database | Full-stack |
 | [Newsletter System](./examples/newsletter-system.md) | Complete multi-language newsletter architecture | Email |
+| [Content Pipeline](./examples/content-pipeline.md) | Automated content generation and distribution | Automation |
+| [Social Media Automation](./examples/social-media-automation.md) | X/Threads API with Claude-generated posts | Social |
+| [RSS Feed Astro](./examples/rss-feed-astro.md) | Multi-language RSS feeds with Astro | Content |
+| [React Components](./examples/react-components.md) | Common UI patterns for Claude Code projects | UI |
+| [API Endpoint Patterns](./examples/api-endpoint-patterns.md) | Cloudflare Edge API design patterns | Backend |
 
 ### Guides
 
@@ -74,6 +79,8 @@ claude-world-examples/
 | [Production Readiness](./guides/production-readiness.md) | Checklist before shipping to production | 15 min |
 | [Security Best Practices](./guides/security-best-practices.md) | Build secure applications from the start | 20 min |
 | [Specification-Driven Development](./guides/specification-driven-development.md) | Write specs first, implement reliably | 30 min |
+| [Designing Agents](./guides/designing-agents.md) | Create project-specific custom agents | 20 min |
+| [Designing Skills](./guides/designing-skills.md) | Build reusable slash command workflows | 20 min |
 
 ### Templates
 
