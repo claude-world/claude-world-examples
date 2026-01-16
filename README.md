@@ -61,6 +61,7 @@ claude-world-examples/
 | [MCP Setup](./examples/mcp-setup.md) | Complete MCP configuration recipes | Integration |
 | [GitHub Actions Automation](./examples/github-actions-automation.md) | Build automated workflows with Claude API | CI/CD |
 | [Multi-Language Astro](./examples/multi-language-astro.md) | Complete multi-language website setup | i18n |
+| [Supabase + Cloudflare](./examples/supabase-cloudflare-integration.md) | Full-stack with free hosting and database | Full-stack |
 
 ### Guides
 
