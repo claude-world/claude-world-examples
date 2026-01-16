@@ -62,6 +62,7 @@ claude-world-examples/
 | [GitHub Actions Automation](./examples/github-actions-automation.md) | Build automated workflows with Claude API | CI/CD |
 | [Multi-Language Astro](./examples/multi-language-astro.md) | Complete multi-language website setup | i18n |
 | [Supabase + Cloudflare](./examples/supabase-cloudflare-integration.md) | Full-stack with free hosting and database | Full-stack |
+| [Newsletter System](./examples/newsletter-system.md) | Complete multi-language newsletter architecture | Email |
 
 ### Guides
 

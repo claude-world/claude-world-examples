@@ -62,6 +62,7 @@ claude-world-examples/
 | [GitHub Actions 自動化](./examples/zh-TW/github-actions-automation.md) | 用 Claude API 建立自動化工作流程 | CI/CD |
 | [多語言 Astro](./examples/zh-TW/multi-language-astro.md) | 完整的多語言網站設定 | i18n |
 | [Supabase + Cloudflare](./examples/supabase-cloudflare-integration.md) | 免費託管與資料庫的全端整合 | 全端 |
+| [Newsletter 系統](./examples/newsletter-system.md) | 完整的多語言電子報架構 | 電子郵件 |
 
 ### 指南
 
