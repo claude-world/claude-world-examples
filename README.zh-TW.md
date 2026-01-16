@@ -81,6 +81,7 @@ claude-world-examples/
 |------|------|
 | [依框架分類的 CLAUDE.md](./templates/zh-TW/claude-md-templates.md) | React、Next.js、Python、Go 等即用模板 |
 | [Release 監控工作流程](./templates/release-monitor-workflow.yml) | 自動監控 release 的 GitHub Actions 工作流程 |
+| [GitHub Actions 自動化套件](./templates/github-actions-suite/) | 完整自動化套件（CI、監控、社群、電子報） |
 
 ### 案例研究
 

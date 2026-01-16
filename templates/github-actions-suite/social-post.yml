@@ -1,0 +1,258 @@
+# Social Media Post Workflow
+#
+# Posts content to X (Twitter) and Threads.
+# Uses Claude API to generate platform-optimized posts.
+#
+# Required Secrets:
+# - ANTHROPIC_API_KEY: Claude API key
+#
+# X/Twitter Secrets:
+# - X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET
+#
+# Threads Secrets:
+# - THREADS_USER_ID, THREADS_ACCESS_TOKEN
+
+name: Post to Social Media
+
+on:
+  workflow_dispatch:
+    inputs:
+      content:
+        description: 'Content to post (or article slug)'
+        required: true
+        type: string
+      platforms:
+        description: 'Platforms (comma-separated: x,threads)'
+        required: true
+        type: string
+        default: 'x,threads'
+      language:
+        description: 'Language'
+        required: true
+        type: choice
+        options:
+          - en
+          - zh-tw
+          - ja
+        default: en
+      dry_run:
+        description: 'Dry run (no actual posting)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  CLAUDE_MODEL: claude-sonnet-4-20250514
+
+jobs:
+  generate-posts:
+    runs-on: ubuntu-latest
+    outputs:
+      posts_json: ${{ steps.generate.outputs.posts_json }}
+
+    steps:
+      - name: Generate platform-specific posts
+        id: generate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CONTENT: ${{ github.event.inputs.content }}
+          LANGUAGE: ${{ github.event.inputs.language }}
+        run: |
+          cat > /tmp/generate.js << 'EOF'
+          const https = require('https');
+
+          async function callClaude(prompt) {
+            return new Promise((resolve, reject) => {
+              const body = JSON.stringify({
+                model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+                max_tokens: 1000,
+                messages: [{ role: 'user', content: prompt }]
+              });
+
+              const req = https.request({
+                hostname: 'api.anthropic.com',
+                path: '/v1/messages',
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-api-key': process.env.ANTHROPIC_API_KEY,
+                  'anthropic-version': '2023-06-01'
+                }
+              }, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                  const response = JSON.parse(data);
+                  if (response.error) reject(new Error(response.error.message));
+                  else resolve(response.content[0].text);
+                });
+              });
+              req.on('error', reject);
+              req.write(body);
+              req.end();
+            });
+          }
+
+          async function main() {
+            const content = process.env.CONTENT;
+            const lang = process.env.LANGUAGE;
+
+            const langInstructions = {
+              en: 'Write in English.',
+              'zh-tw': '使用繁體中文撰寫。',
+              ja: '日本語で書いてください。'
+            };
+
+            const prompt = `
+              Generate social media posts for this content:
+              "${content}"
+
+              ${langInstructions[lang]}
+
+              Return JSON only:
+              {
+                "x": "Tweet under 280 chars. Include relevant hashtags.",
+                "threads": "Threads post under 500 chars. More conversational tone."
+              }
+            `;
+
+            const result = await callClaude(prompt);
+            const posts = JSON.parse(result.match(/\{[\s\S]*\}/)[0]);
+            console.log(JSON.stringify(posts));
+          }
+
+          main().catch(err => {
+            console.error('Error:', err.message);
+            process.exit(1);
+          });
+          EOF
+
+          node /tmp/generate.js > /tmp/posts.json
+          echo "Generated posts:"
+          cat /tmp/posts.json
+
+          echo "posts_json=$(cat /tmp/posts.json | base64 -w 0)" >> $GITHUB_OUTPUT
+
+  post-to-x:
+    needs: generate-posts
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.platforms, 'x')
+
+    steps:
+      - name: Post to X
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          POSTS_B64: ${{ needs.generate-posts.outputs.posts_json }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          if [ -z "$X_API_KEY" ]; then
+            echo "X API not configured, skipping"
+            exit 0
+          fi
+
+          POSTS=$(echo "$POSTS_B64" | base64 -d)
+          TWEET=$(echo "$POSTS" | jq -r '.x')
+
+          echo "Tweet: $TWEET"
+
+          if [ "$DRY_RUN" == "true" ]; then
+            echo "DRY RUN - Would post: $TWEET"
+            exit 0
+          fi
+
+          # Install OAuth library
+          cd /tmp && npm init -y && npm install oauth-1.0a crypto-js
+
+          cat > /tmp/post-x.js << 'EOF'
+          const OAuth = require('oauth-1.0a');
+          const crypto = require('crypto-js');
+          const https = require('https');
+
+          const oauth = OAuth({
+            consumer: { key: process.env.X_API_KEY, secret: process.env.X_API_SECRET },
+            signature_method: 'HMAC-SHA1',
+            hash_function(base_string, key) {
+              return crypto.HmacSHA1(base_string, key).toString(crypto.enc.Base64);
+            }
+          });
+
+          const token = { key: process.env.X_ACCESS_TOKEN, secret: process.env.X_ACCESS_SECRET };
+          const tweet = process.env.TWEET;
+
+          const url = 'https://api.twitter.com/2/tweets';
+          const request_data = { url, method: 'POST' };
+          const headers = oauth.toHeader(oauth.authorize(request_data, token));
+          headers['Content-Type'] = 'application/json';
+
+          const req = https.request(url, { method: 'POST', headers }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              console.log('Response:', data);
+              if (res.statusCode >= 200 && res.statusCode < 300) {
+                console.log('Posted to X successfully');
+              } else {
+                console.error('Failed to post');
+                process.exit(1);
+              }
+            });
+          });
+
+          req.write(JSON.stringify({ text: tweet }));
+          req.end();
+          EOF
+
+          TWEET="$TWEET" node /tmp/post-x.js
+
+  post-to-threads:
+    needs: generate-posts
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.platforms, 'threads')
+
+    steps:
+      - name: Post to Threads
+        env:
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          POSTS_B64: ${{ needs.generate-posts.outputs.posts_json }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          if [ -z "$THREADS_ACCESS_TOKEN" ]; then
+            echo "Threads API not configured, skipping"
+            exit 0
+          fi
+
+          POSTS=$(echo "$POSTS_B64" | base64 -d)
+          TEXT=$(echo "$POSTS" | jq -r '.threads')
+
+          echo "Threads post: $TEXT"
+
+          if [ "$DRY_RUN" == "true" ]; then
+            echo "DRY RUN - Would post: $TEXT"
+            exit 0
+          fi
+
+          # Step 1: Create container
+          ENCODED_TEXT=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$TEXT'''))")
+
+          CONTAINER=$(curl -s -X POST \
+            "https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads?media_type=TEXT&text=${ENCODED_TEXT}&access_token=${THREADS_ACCESS_TOKEN}")
+
+          CONTAINER_ID=$(echo "$CONTAINER" | jq -r '.id')
+
+          if [ "$CONTAINER_ID" == "null" ]; then
+            echo "Failed to create container: $CONTAINER"
+            exit 1
+          fi
+
+          echo "Container created: $CONTAINER_ID"
+          sleep 2
+
+          # Step 2: Publish
+          RESULT=$(curl -s -X POST \
+            "https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads_publish?creation_id=${CONTAINER_ID}&access_token=${THREADS_ACCESS_TOKEN}")
+
+          echo "Published: $RESULT"

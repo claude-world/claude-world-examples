@@ -1,0 +1,271 @@
+# Blog Monitor Workflow
+#
+# Monitors websites/blogs for new content and generates articles.
+# Uses Claude API to analyze content and create posts.
+#
+# Required Secrets:
+# - ANTHROPIC_API_KEY: Claude API key
+#
+# Optional Secrets:
+# - X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET: X/Twitter
+# - THREADS_USER_ID, THREADS_ACCESS_TOKEN: Threads
+
+name: Blog Monitor
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'  # Every 2 hours
+
+  workflow_dispatch:
+    inputs:
+      blog_url:
+        description: 'Specific blog URL to process'
+        required: false
+        type: string
+      force_process:
+        description: 'Force process even if already tracked'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  # ========================================
+  # CUSTOMIZE THESE VALUES
+  # ========================================
+  BLOG_URL: https://example.com/blog
+  TRACKING_FILE: .github/processed-articles.json
+  CLAUDE_MODEL: claude-sonnet-4-20250514
+
+jobs:
+  check-blog:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      has_new: ${{ steps.check.outputs.has_new }}
+      articles_json: ${{ steps.check.outputs.articles_json }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check for new articles
+        id: check
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SPECIFIC_URL: ${{ github.event.inputs.blog_url }}
+          FORCE_PROCESS: ${{ github.event.inputs.force_process }}
+        run: |
+          cat > /tmp/check-blog.js << 'EOF'
+          const https = require('https');
+          const fs = require('fs');
+
+          const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+          const TRACKING_FILE = process.env.TRACKING_FILE || '.github/processed-articles.json';
+
+          // Load processed articles
+          let processed = { articles: [] };
+          try {
+            processed = JSON.parse(fs.readFileSync(TRACKING_FILE, 'utf-8'));
+          } catch (e) {}
+
+          // Fetch URL
+          function fetchUrl(url) {
+            return new Promise((resolve, reject) => {
+              const urlObj = new URL(url);
+              const options = {
+                hostname: urlObj.hostname,
+                path: urlObj.pathname,
+                headers: { 'User-Agent': 'BlogMonitor/1.0' }
+              };
+              https.get(options, (res) => {
+                if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                  return fetchUrl(res.headers.location).then(resolve).catch(reject);
+                }
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => resolve(data));
+              }).on('error', reject);
+            });
+          }
+
+          // Call Claude API
+          async function callClaude(prompt) {
+            return new Promise((resolve, reject) => {
+              const body = JSON.stringify({
+                model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+                max_tokens: 2000,
+                messages: [{ role: 'user', content: prompt }]
+              });
+
+              const req = https.request({
+                hostname: 'api.anthropic.com',
+                path: '/v1/messages',
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-api-key': ANTHROPIC_API_KEY,
+                  'anthropic-version': '2023-06-01'
+                }
+              }, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                  try {
+                    const response = JSON.parse(data);
+                    if (response.error) reject(new Error(response.error.message));
+                    else resolve(response.content[0].text);
+                  } catch (e) { reject(e); }
+                });
+              });
+              req.on('error', reject);
+              req.write(body);
+              req.end();
+            });
+          }
+
+          // Extract blog links from HTML
+          function extractLinks(html) {
+            const links = [];
+            const pattern = /href=["']\/blog\/([a-z0-9-]+)["']/gi;
+            let match;
+            while ((match = pattern.exec(html)) !== null) {
+              const slug = match[1];
+              if (slug && !links.includes(slug) && slug.length > 3) {
+                links.push(slug);
+              }
+            }
+            return links;
+          }
+
+          async function main() {
+            const blogHtml = await fetchUrl(process.env.BLOG_URL || 'https://example.com/blog');
+            const slugs = extractLinks(blogHtml);
+            const newSlugs = slugs.filter(s => !processed.articles.includes(s));
+
+            if (newSlugs.length === 0) {
+              console.log(JSON.stringify({ has_new: false }));
+              return;
+            }
+
+            const articles = [];
+            for (const slug of newSlugs.slice(0, 3)) {
+              try {
+                const articleHtml = await fetchUrl(`${process.env.BLOG_URL}/${slug}`);
+                const content = await callClaude(`
+                  Analyze this HTML and extract:
+                  - title
+                  - date (YYYY-MM-DD)
+                  - summary (2-3 sentences)
+                  - key_topics (array)
+
+                  HTML: ${articleHtml.substring(0, 10000)}
+
+                  Return JSON only.
+                `);
+
+                const parsed = JSON.parse(content.match(/\{[\s\S]*\}/)[0]);
+                articles.push({ ...parsed, slug });
+              } catch (e) {
+                console.error(`Error processing ${slug}:`, e.message);
+              }
+            }
+
+            console.log(JSON.stringify({
+              has_new: articles.length > 0,
+              articles
+            }));
+          }
+
+          main().catch(err => {
+            console.error('Error:', err.message);
+            process.exit(1);
+          });
+          EOF
+
+          TRACKING_FILE="${{ env.TRACKING_FILE }}" \
+          BLOG_URL="${{ env.BLOG_URL }}" \
+          CLAUDE_MODEL="${{ env.CLAUDE_MODEL }}" \
+          node /tmp/check-blog.js > /tmp/result.json
+
+          HAS_NEW=$(cat /tmp/result.json | jq -r '.has_new')
+          echo "has_new=$HAS_NEW" >> $GITHUB_OUTPUT
+
+          if [ "$HAS_NEW" == "true" ]; then
+            ARTICLES=$(cat /tmp/result.json | jq -c '.articles')
+            echo "articles_json=$(echo "$ARTICLES" | base64 -w 0)" >> $GITHUB_OUTPUT
+          fi
+
+  generate-content:
+    needs: check-blog
+    runs-on: ubuntu-latest
+    if: needs.check-blog.outputs.has_new == 'true'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate articles
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ARTICLES_B64: ${{ needs.check-blog.outputs.articles_json }}
+        run: |
+          ARTICLES=$(echo "$ARTICLES_B64" | base64 -d)
+
+          # Generate markdown articles for each detected article
+          echo "$ARTICLES" | jq -c '.[]' | while read -r article; do
+            TITLE=$(echo "$article" | jq -r '.title')
+            SLUG=$(echo "$article" | jq -r '.slug')
+            SUMMARY=$(echo "$article" | jq -r '.summary')
+            DATE=$(echo "$article" | jq -r '.date')
+
+            mkdir -p content/articles
+
+            cat > "content/articles/${SLUG}.md" << MARKDOWN
+          ---
+          title: "${TITLE}"
+          date: "${DATE}"
+          description: "${SUMMARY}"
+          ---
+
+          ${SUMMARY}
+
+          <!-- TODO: Add full content -->
+          MARKDOWN
+
+            echo "Created: content/articles/${SLUG}.md"
+          done
+
+      - name: Update tracking file
+        env:
+          ARTICLES_B64: ${{ needs.check-blog.outputs.articles_json }}
+        run: |
+          ARTICLES=$(echo "$ARTICLES_B64" | base64 -d)
+
+          # Update tracking file
+          if [ -f "${{ env.TRACKING_FILE }}" ]; then
+            EXISTING=$(cat "${{ env.TRACKING_FILE }}")
+          else
+            EXISTING='{"articles":[]}'
+          fi
+
+          NEW_SLUGS=$(echo "$ARTICLES" | jq -r '.[].slug')
+          UPDATED=$(echo "$EXISTING" | jq --argjson new "$(echo "$NEW_SLUGS" | jq -Rs 'split("\n") | map(select(. != ""))')" '.articles += $new | .articles |= unique')
+
+          mkdir -p $(dirname "${{ env.TRACKING_FILE }}")
+          echo "$UPDATED" > "${{ env.TRACKING_FILE }}"
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add content/ "${{ env.TRACKING_FILE }}"
+          git diff --staged --quiet || git commit -m "content: add new articles"
+          git push || echo "Nothing to push"

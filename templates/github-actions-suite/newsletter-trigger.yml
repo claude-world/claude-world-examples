@@ -1,0 +1,334 @@
+# Newsletter Trigger Workflow
+#
+# Generates and sends newsletters automatically.
+# Can be triggered manually or on new releases.
+#
+# Required Secrets:
+# - ANTHROPIC_API_KEY: Claude API key (for generation)
+# - RESEND_API_KEY: Resend API key (for sending)
+# - SUPABASE_URL: Supabase project URL
+# - SUPABASE_SERVICE_KEY: Supabase service role key
+
+name: Newsletter
+
+on:
+  # Trigger on new releases
+  release:
+    types: [published]
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - generate
+          - send
+          - generate-and-send
+        default: generate
+      date:
+        description: 'Newsletter date (YYYY-MM-DD, for sending)'
+        required: false
+        type: string
+      language:
+        description: 'Language filter (optional)'
+        required: false
+        type: choice
+        options:
+          - all
+          - en
+          - zh-tw
+          - ja
+        default: all
+
+env:
+  CLAUDE_MODEL: claude-sonnet-4-20250514
+
+jobs:
+  # ========================================
+  # Generate Newsletter Content
+  # ========================================
+  generate:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_dispatch' && contains(fromJSON('["generate", "generate-and-send"]'), github.event.inputs.action))
+    permissions:
+      contents: write
+    outputs:
+      newsletter_date: ${{ steps.generate.outputs.date }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate newsletter content
+        id: generate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          VERSION: ${{ github.event.release.tag_name }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          echo "date=$DATE" >> $GITHUB_OUTPUT
+
+          mkdir -p newsletters/drafts/$DATE
+
+          cat > /tmp/generate.js << 'EOF'
+          const https = require('https');
+          const fs = require('fs');
+
+          const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+          const VERSION = process.env.VERSION || 'latest';
+          const RELEASE_NAME = process.env.RELEASE_NAME || '';
+          const RELEASE_BODY = process.env.RELEASE_BODY || '';
+          const DATE = new Date().toISOString().split('T')[0];
+
+          async function callClaude(prompt) {
+            return new Promise((resolve, reject) => {
+              const body = JSON.stringify({
+                model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+                max_tokens: 4000,
+                messages: [{ role: 'user', content: prompt }]
+              });
+
+              const req = https.request({
+                hostname: 'api.anthropic.com',
+                path: '/v1/messages',
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-api-key': ANTHROPIC_API_KEY,
+                  'anthropic-version': '2023-06-01'
+                }
+              }, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                  const response = JSON.parse(data);
+                  if (response.error) reject(new Error(response.error.message));
+                  else resolve(response.content[0].text);
+                });
+              });
+              req.on('error', reject);
+              req.write(body);
+              req.end();
+            });
+          }
+
+          async function main() {
+            const languages = {
+              en: { subject: 'Weekly Update', greeting: 'Hello' },
+              'zh-tw': { subject: '本週精選', greeting: '你好' },
+              ja: { subject: '週間アップデート', greeting: 'こんにちは' }
+            };
+
+            for (const [lang, config] of Object.entries(languages)) {
+              console.log(`Generating ${lang} newsletter...`);
+
+              const prompt = `
+                Generate a newsletter email in ${lang === 'en' ? 'English' : lang === 'zh-tw' ? '繁體中文' : '日本語'}.
+
+                Context:
+                - Version: ${VERSION}
+                - Release: ${RELEASE_NAME}
+                - Notes: ${RELEASE_BODY || 'No release notes'}
+
+                Generate an HTML email with:
+                1. Greeting
+                2. Main highlights (2-3 items)
+                3. Quick tips section
+                4. Call to action
+                5. Footer with unsubscribe link placeholder: {{unsubscribe_url}}
+
+                Use clean, minimal HTML styling. Return HTML only.
+              `;
+
+              const html = await callClaude(prompt);
+              fs.writeFileSync(`newsletters/drafts/${DATE}/newsletter-${lang}.html`, html);
+              console.log(`  Written: newsletter-${lang}.html`);
+            }
+
+            // Generate subject lines
+            const subjects = Object.entries(languages)
+              .map(([lang, c]) => `${lang}: [Newsletter] ${c.subject} - ${DATE}`)
+              .join('\n');
+
+            fs.writeFileSync(`newsletters/drafts/${DATE}/subject-lines.txt`, subjects);
+            console.log('Done!');
+          }
+
+          main().catch(err => {
+            console.error('Error:', err);
+            process.exit(1);
+          });
+          EOF
+
+          node /tmp/generate.js
+
+      - name: Commit newsletter drafts
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add newsletters/
+          git diff --staged --quiet || git commit -m "newsletter: generate draft for $(date +%Y-%m-%d)"
+          git push
+
+  # ========================================
+  # Send Newsletter
+  # ========================================
+  send:
+    runs-on: ubuntu-latest
+    needs: generate
+    if: |
+      always() &&
+      (
+        (github.event_name == 'workflow_dispatch' && contains(fromJSON('["send", "generate-and-send"]'), github.event.inputs.action)) ||
+        (github.event_name == 'release')
+      )
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main  # Get latest with generated content
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install resend @supabase/supabase-js
+
+      - name: Send newsletter
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          NEWSLETTER_DATE: ${{ needs.generate.outputs.newsletter_date || github.event.inputs.date }}
+          LANGUAGE_FILTER: ${{ github.event.inputs.language }}
+        run: |
+          cat > /tmp/send.js << 'EOF'
+          const { Resend } = require('resend');
+          const { createClient } = require('@supabase/supabase-js');
+          const fs = require('fs');
+          const path = require('path');
+
+          const resend = new Resend(process.env.RESEND_API_KEY);
+          const supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_KEY
+          );
+
+          const DATE = process.env.NEWSLETTER_DATE || new Date().toISOString().split('T')[0];
+          const LANG_FILTER = process.env.LANGUAGE_FILTER;
+
+          async function main() {
+            const draftsDir = `newsletters/drafts/${DATE}`;
+
+            if (!fs.existsSync(draftsDir)) {
+              console.error(`Newsletter not found: ${draftsDir}`);
+              process.exit(1);
+            }
+
+            // Load newsletters
+            const newsletters = {};
+            const subjects = {};
+
+            for (const lang of ['en', 'zh-tw', 'ja']) {
+              if (LANG_FILTER && LANG_FILTER !== 'all' && LANG_FILTER !== lang) continue;
+
+              const file = path.join(draftsDir, `newsletter-${lang}.html`);
+              if (fs.existsSync(file)) {
+                newsletters[lang] = fs.readFileSync(file, 'utf-8');
+                subjects[lang] = `[Newsletter] Weekly Update - ${DATE}`;
+              }
+            }
+
+            // Get subscribers
+            let query = supabase
+              .from('newsletter_subscribers')
+              .select('id, email, preferred_language')
+              .eq('confirmed', true)
+              .is('unsubscribed_at', null);
+
+            if (LANG_FILTER && LANG_FILTER !== 'all') {
+              query = query.eq('preferred_language', LANG_FILTER);
+            }
+
+            const { data: subscribers, error } = await query;
+
+            if (error) {
+              console.error('Database error:', error);
+              process.exit(1);
+            }
+
+            console.log(`Sending to ${subscribers.length} subscribers...`);
+
+            // Group by language
+            const byLang = {};
+            for (const sub of subscribers) {
+              const lang = newsletters[sub.preferred_language] ? sub.preferred_language : 'en';
+              if (!byLang[lang]) byLang[lang] = [];
+              byLang[lang].push(sub);
+            }
+
+            // Send batches
+            let sent = 0;
+            for (const [lang, subs] of Object.entries(byLang)) {
+              if (!newsletters[lang]) continue;
+
+              const batch = subs.map(sub => ({
+                from: 'Newsletter <newsletter@example.com>',
+                to: sub.email,
+                subject: subjects[lang],
+                html: newsletters[lang].replace(/\{\{unsubscribe_url\}\}/g,
+                  `https://example.com/unsubscribe?id=${sub.id}`)
+              }));
+
+              try {
+                await resend.batch.send(batch);
+                sent += batch.length;
+                console.log(`  Sent ${batch.length} ${lang} emails`);
+              } catch (e) {
+                console.error(`  Failed: ${e.message}`);
+              }
+            }
+
+            console.log(`Done! Sent ${sent} emails.`);
+          }
+
+          main().catch(err => {
+            console.error('Error:', err);
+            process.exit(1);
+          });
+          EOF
+
+          node /tmp/send.js
+
+      - name: Save send log
+        run: |
+          DATE="${{ needs.generate.outputs.newsletter_date || github.event.inputs.date }}"
+          mkdir -p newsletters/sent/$DATE
+
+          echo "{
+            \"sentAt\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+            \"date\": \"$DATE\",
+            \"trigger\": \"${{ github.event_name }}\"
+          }" > newsletters/sent/$DATE/send-log.json
+
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add newsletters/sent/
+          git diff --staged --quiet || git commit -m "newsletter: send log for $DATE"
+          git push || true

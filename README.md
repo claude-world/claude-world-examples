@@ -81,6 +81,7 @@ claude-world-examples/
 |----------|-------------|
 | [CLAUDE.md by Framework](./templates/claude-md-templates.md) | Ready-to-use templates for React, Next.js, Python, Go, and more |
 | [Release Monitor Workflow](./templates/release-monitor-workflow.yml) | GitHub Actions workflow for automated release monitoring |
+| [GitHub Actions Suite](./templates/github-actions-suite/) | Complete automation suite (CI, monitoring, social, newsletter) |
 
 ### Case Studies
 
