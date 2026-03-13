@@ -281,15 +281,15 @@ export default function LanguageSwitcher({
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 hover:border-gray-600 transition-colors text-sm"
+        className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:bg-gray-700"
         aria-expanded={isOpen}
         aria-haspopup="listbox"
         aria-label="Select language"
       >
         <span className="text-base">{currentLanguage.flag}</span>
-        <span className="hidden sm:inline text-gray-300">{currentLanguage.label}</span>
+        <span className="hidden sm:inline text-slate-700 dark:text-gray-300">{currentLanguage.label}</span>
         <svg
-          className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          className={`w-4 h-4 text-slate-500 transition-transform dark:text-gray-400 ${isOpen ? 'rotate-180' : ''}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -300,7 +300,7 @@ export default function LanguageSwitcher({
 
       {isOpen && (
         <div
-          className="absolute right-0 mt-2 w-48 bg-gray-800 rounded-lg shadow-xl border border-gray-700 z-50 overflow-hidden"
+          className="absolute right-0 z-50 mt-2 w-48 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800"
           role="listbox"
           aria-label="Available languages"
         >
@@ -308,14 +308,14 @@ export default function LanguageSwitcher({
             <button
               key={lang.code}
               onClick={() => handleLanguageSelect(lang)}
-              className={`w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-gray-700 transition-colors ${
-                lang.code === currentLang ? 'bg-gray-700/50' : ''
+              className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 dark:hover:bg-gray-700 ${
+                lang.code === currentLang ? 'bg-slate-100 dark:bg-gray-700/50' : ''
               }`}
               role="option"
               aria-selected={lang.code === currentLang}
             >
               <span className="text-lg">{lang.flag}</span>
-              <span className="text-gray-200">{lang.label}</span>
+              <span className="text-slate-700 dark:text-gray-200">{lang.label}</span>
               {lang.code === currentLang && (
                 <svg className="w-4 h-4 ml-auto text-green-400" fill="currentColor" viewBox="0 0 20 20">
                   <path
@@ -393,7 +393,9 @@ export default function Navigation({ items, logo, rightSlot }: NavigationProps) 
   return (
     <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all ${
-        isScrolled ? 'bg-gray-900/95 backdrop-blur-sm shadow-lg' : 'bg-transparent'
+        isScrolled
+          ? 'border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/95'
+          : 'border-b border-slate-200/80 bg-white/90 backdrop-blur-sm dark:border-gray-800/80 dark:bg-gray-950/80'
       }`}
     >
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -401,7 +403,7 @@ export default function Navigation({ items, logo, rightSlot }: NavigationProps) 
           {/* Logo */}
           <div className="flex-shrink-0">
             {logo || (
-              <a href="/" className="text-xl font-bold text-white">
+              <a href="/" className="text-xl font-bold text-slate-900 dark:text-white">
                 Logo
               </a>
             )}
@@ -415,8 +417,8 @@ export default function Navigation({ items, logo, rightSlot }: NavigationProps) 
                 href={item.href}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   item.isActive
-                    ? 'bg-orange-500/20 text-orange-400'
-                    : 'text-gray-300 hover:text-white hover:bg-gray-800'
+                    ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white'
                 }`}
               >
                 {item.label}
@@ -432,7 +434,7 @@ export default function Navigation({ items, logo, rightSlot }: NavigationProps) 
           {/* Mobile Menu Button */}
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="md:hidden p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+            className="md:hidden rounded-lg p-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
             aria-expanded={isMenuOpen}
             aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
           >
@@ -451,7 +453,7 @@ export default function Navigation({ items, logo, rightSlot }: NavigationProps) 
 
       {/* Mobile Menu */}
       <div
-        className={`md:hidden fixed inset-0 top-16 bg-gray-900/98 backdrop-blur-sm transition-all ${
+        className={`md:hidden fixed inset-0 top-16 bg-white/98 backdrop-blur-sm transition-all dark:bg-gray-900/98 ${
           isMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible'
         }`}
       >
@@ -463,14 +465,14 @@ export default function Navigation({ items, logo, rightSlot }: NavigationProps) 
               onClick={() => setIsMenuOpen(false)}
               className={`px-4 py-3 rounded-lg text-lg font-medium transition-colors ${
                 item.isActive
-                  ? 'bg-orange-500/20 text-orange-400'
-                  : 'text-gray-300 hover:text-white hover:bg-gray-800'
+                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white'
               }`}
             >
               {item.label}
             </a>
           ))}
-          <div className="pt-4 border-t border-gray-800">
+          <div className="pt-4 border-t border-slate-200 dark:border-gray-800">
             {rightSlot}
           </div>
         </nav>
