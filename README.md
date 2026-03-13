@@ -59,6 +59,10 @@ claude-world-examples/
 | [Refactoring Patterns](./examples/refactoring-patterns.md) | Systematic code improvement with Claude | Code quality |
 | [Hooks Patterns](./examples/hooks-patterns.md) | Production-ready hook configurations | Automation |
 | [MCP Setup](./examples/mcp-setup.md) | Complete MCP configuration recipes | Integration |
+| [Trend Pulse: Basic Trending](./examples/trend-pulse/basic-trending.md) | Query live topics with `get_trending` and `search_trends` | Research |
+| [Trend Pulse: Content Brief](./examples/trend-pulse/content-brief.md) | Turn trending signals into a content brief | Content strategy |
+| [CF Browser: Screenshot Capture](./examples/cf-browser/screenshot-capture.md) | Capture and inspect rendered pages with browser MCP tools | QA |
+| [CF Browser: Page Scraping](./examples/cf-browser/page-scraping.md) | Scrape JavaScript-rendered pages through a browser session | Web data |
 | [GitHub Actions Automation](./examples/github-actions-automation.md) | Build automated workflows with Claude API | CI/CD |
 | [Multi-Language Astro](./examples/multi-language-astro.md) | Complete multi-language website setup | i18n |
 | [Supabase + Cloudflare](./examples/supabase-cloudflare-integration.md) | Full-stack with free hosting and database | Full-stack |
