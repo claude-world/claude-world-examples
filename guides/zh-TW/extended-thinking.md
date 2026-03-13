@@ -6,8 +6,8 @@
 
 | 模型 | Extended Thinking | 預設 | 強度等級 |
 |------|-------------------|------|----------|
-| **Opus 4.5** | 是 | 開啟（v2.0.67+） | low / medium / high |
-| **Sonnet 4.5** | 是 | 關閉 | N/A |
+| **Opus 4.6** | 是 | 開啟（v2.0.67+） | low / medium / high |
+| **Sonnet 4.6** | 是 | 關閉 | N/A |
 | **Haiku 4.5** | 是 | 關閉 | N/A |
 
 ## 什麼是 Extended Thinking？
@@ -58,7 +58,7 @@ Thinking mode 通常透過 `/config` 互動式控制，而不是設定檔。
 
 在提示時按 `Option+P`（macOS）或 `Alt+P`（Windows/Linux）。
 
-## 強度等級（僅限 Opus 4.5）
+## 強度等級（僅限 Opus 4.6）
 
 | 強度 | 思考深度 | 使用案例 |
 |------|----------|----------|
