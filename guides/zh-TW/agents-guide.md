@@ -7,12 +7,12 @@
 | Agent | 用途 | 預設模型 | 適用場景 |
 |-------|------|----------|----------|
 | `Explore` | 快速程式碼導航 | Haiku 4.5 | 檔案搜尋、模式匹配 |
-| `general-purpose` | 複雜多步驟任務 | Sonnet 4.5 | 實作、分析 |
-| `code-reviewer` | 程式碼品質分析 | Sonnet 4.5 | PR 審查、模式分析 |
-| `security-auditor` | 漏洞檢測 | Sonnet 4.5 | 驗證、支付、資料 |
+| `general-purpose` | 複雜多步驟任務 | Sonnet 4.6 | 實作、分析 |
+| `code-reviewer` | 程式碼品質分析 | Sonnet 4.6 | PR 審查、模式分析 |
+| `security-auditor` | 漏洞檢測 | Sonnet 4.6 | 驗證、支付、資料 |
 | `test-runner` | 測試執行 | Haiku 4.5 | 執行、分析測試 |
-| `debugger` | 根本原因分析 | Sonnet 4.5 | Bug 調查 |
-| `refactor-assistant` | 程式碼改進 | Sonnet 4.5 | 清理、重構 |
+| `debugger` | 根本原因分析 | Sonnet 4.6 | Bug 調查 |
+| `refactor-assistant` | 程式碼改進 | Sonnet 4.6 | 清理、重構 |
 | `doc-writer` | 文件撰寫 | Haiku/Sonnet | README、API 文件 |
 
 ## Task 工具
@@ -329,16 +329,16 @@ Task({ subagent_type: "debugger", model: "sonnet",
 | 模式匹配 | Haiku 4.5 | $ | 快 |
 | 測試執行 | Haiku 4.5 | $ | 快 |
 | 簡單文件 | Haiku 4.5 | $ | 快 |
-| 程式碼審查 | Sonnet 4.5 | $$ | 平衡 |
-| 實作 | Sonnet 4.5 | $$ | 平衡 |
-| 除錯 | Sonnet 4.5 | $$ | 平衡 |
+| 程式碼審查 | Sonnet 4.6 | $$ | 平衡 |
+| 實作 | Sonnet 4.6 | $$ | 平衡 |
+| 除錯 | Sonnet 4.6 | $$ | 平衡 |
 | 安全稽核 | Sonnet/Opus | $$-$$$ | 平衡-深度 |
-| 架構設計 | Opus 4.5 | $$$ | 深度 |
+| 架構設計 | Opus 4.6 | $$$ | 深度 |
 
 **關鍵權衡：**
 - Haiku 4.5：比 Sonnet 快 2 倍、成本 1/3
-- Sonnet 4.5：最佳程式碼撰寫效能
-- Opus 4.5：最高智能，預設 Thinking Mode
+- Sonnet 4.6：最佳程式碼撰寫效能
+- Opus 4.6：最高智能，預設 Thinking Mode
 
 ## 背景 Agents
 

@@ -195,8 +195,8 @@ Choose the right model for each task:
 | Model | Best For | Speed | Cost |
 |-------|----------|-------|------|
 | **Haiku 4.5** | Explore agents, file searches, pattern matching | Fast | Low |
-| **Sonnet 4.5** | Implementation, code review, refactoring | Balanced | Medium |
-| **Opus 4.5** | Architecture decisions, security audits, complex reasoning | Thorough | High |
+| **Sonnet 4.6** | Implementation, code review, refactoring | Balanced | Medium |
+| **Opus 4.6** | Architecture decisions, security audits, complex reasoning | Thorough | High |
 
 **Quick tip**: Press `Option+P` (macOS) or `Alt+P` (Windows/Linux) to switch models during prompting.
 

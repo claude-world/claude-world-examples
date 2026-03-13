@@ -6,8 +6,8 @@
 
 | Model | Extended Thinking | Default | Effort Levels |
 |-------|-------------------|---------|---------------|
-| **Opus 4.5** | Yes | ON (v2.0.67+) | low / medium / high |
-| **Sonnet 4.5** | Yes | OFF | N/A |
+| **Opus 4.6** | Yes | ON (v2.0.67+) | low / medium / high |
+| **Sonnet 4.6** | Yes | OFF | N/A |
 | **Haiku 4.5** | Yes | OFF | N/A |
 
 ## What is Extended Thinking?
@@ -58,7 +58,7 @@ Thinking mode is typically controlled via `/config` interactively rather than se
 
 Press `Option+P` (macOS) or `Alt+P` (Windows/Linux) during prompting.
 
-## Effort Levels (Opus 4.5 Only)
+## Effort Levels (Opus 4.6 Only)
 
 | Effort | Thinking Depth | Use Case |
 |--------|----------------|----------|

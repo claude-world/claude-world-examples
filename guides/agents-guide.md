@@ -7,12 +7,12 @@
 | Agent | Purpose | Default Model | Use For |
 |-------|---------|---------------|---------|
 | `Explore` | Fast codebase navigation | Haiku 4.5 | File search, pattern matching |
-| `general-purpose` | Complex multi-step tasks | Sonnet 4.5 | Implementation, analysis |
-| `code-reviewer` | Code quality analysis | Sonnet 4.5 | PR reviews, patterns |
-| `security-auditor` | Vulnerability detection | Sonnet 4.5 | Auth, payments, data |
+| `general-purpose` | Complex multi-step tasks | Sonnet 4.6 | Implementation, analysis |
+| `code-reviewer` | Code quality analysis | Sonnet 4.6 | PR reviews, patterns |
+| `security-auditor` | Vulnerability detection | Sonnet 4.6 | Auth, payments, data |
 | `test-runner` | Test execution | Haiku 4.5 | Running, analyzing tests |
-| `debugger` | Root cause analysis | Sonnet 4.5 | Bug investigation |
-| `refactor-assistant` | Code improvement | Sonnet 4.5 | Cleanup, restructuring |
+| `debugger` | Root cause analysis | Sonnet 4.6 | Bug investigation |
+| `refactor-assistant` | Code improvement | Sonnet 4.6 | Cleanup, restructuring |
 | `doc-writer` | Documentation | Haiku/Sonnet | README, API docs |
 
 ## The Task Tool
@@ -329,16 +329,16 @@ Task({ subagent_type: "debugger", model: "sonnet",
 | Pattern matching | Haiku 4.5 | $ | Fast |
 | Test running | Haiku 4.5 | $ | Fast |
 | Simple docs | Haiku 4.5 | $ | Fast |
-| Code review | Sonnet 4.5 | $$ | Balanced |
-| Implementation | Sonnet 4.5 | $$ | Balanced |
-| Debugging | Sonnet 4.5 | $$ | Balanced |
+| Code review | Sonnet 4.6 | $$ | Balanced |
+| Implementation | Sonnet 4.6 | $$ | Balanced |
+| Debugging | Sonnet 4.6 | $$ | Balanced |
 | Security audit | Sonnet/Opus | $$-$$$ | Balanced-Thorough |
-| Architecture | Opus 4.5 | $$$ | Thorough |
+| Architecture | Opus 4.6 | $$$ | Thorough |
 
 **Key trade-offs:**
 - Haiku 4.5: 2x faster, 1/3 cost vs Sonnet
-- Sonnet 4.5: Best coding performance
-- Opus 4.5: Highest intelligence, default Thinking Mode
+- Sonnet 4.6: Best coding performance
+- Opus 4.6: Highest intelligence, default Thinking Mode
 
 ## Background Agents
 

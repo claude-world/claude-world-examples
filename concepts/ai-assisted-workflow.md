@@ -268,9 +268,9 @@ Each session = clear goal + autonomous execution + review.
 | Task Type | Model | Why |
 |-----------|-------|-----|
 | Exploration | Haiku 4.5 | Fast, cheap, good enough |
-| Implementation | Sonnet 4.5 | Best coding model |
-| Architecture | Opus 4.5 | Deep reasoning |
-| Security review | Opus 4.5 | Thorough analysis |
+| Implementation | Sonnet 4.6 | Best coding model |
+| Architecture | Opus 4.6 | Deep reasoning |
+| Security review | Opus 4.6 | Thorough analysis |
 
 Quick switch: `Option+P` (macOS) or `Alt+P` (Windows)
 
