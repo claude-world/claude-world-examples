@@ -5,6 +5,35 @@ All notable changes to claude-world-examples will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-03-14
+
+Documentation maintenance and version updates.
+
+### Changed
+- Bumped version badge and timestamps to v1.2.0
+
+---
+
+## [1.1.0] - 2026-03-13
+
+### Added
+- Trend Pulse MCP integration examples (`examples/trend-pulse/`)
+  - Basic trending queries with `get_trending` and `search_trends`
+  - Content brief generation from trending signals
+- CF Browser integration examples (`examples/cf-browser/`)
+  - Screenshot capture and page inspection
+  - JavaScript-rendered page scraping
+- 5 new documentation examples + 2 new guides (designing agents, designing skills)
+- GitHub Actions automation suite template
+
+### Changed
+- Updated model references: Opus/Sonnet 4.5 → 4.6
+
+### Fixed
+- Light mode text visibility in React component examples
+
+---
+
 ## [1.0.0] - 2026-01-13
 
 First official release, synced with [claude-world.com v1.0.0](https://claude-world.com).
