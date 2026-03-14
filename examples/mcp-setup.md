@@ -242,7 +242,7 @@ claude mcp add --scope project mongodb \
 
 # MongoDB Atlas
 claude mcp add --scope project mongodb \
-  -e MONGODB_URI="mongodb+srv://user:pass@cluster.mongodb.net/myapp" \
+  -e MONGODB_URI="mongodb+srv://<USER>:<PASSWORD>@cluster.mongodb.net/myapp" \
   -- npx -y @modelcontextprotocol/server-mongodb
 ```
 
