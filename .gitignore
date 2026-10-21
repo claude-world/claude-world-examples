@@ -1,0 +1,3 @@
+# Python bytecode from running .github/scripts locally
+__pycache__/
+*.pyc
