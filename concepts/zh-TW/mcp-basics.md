@@ -4,12 +4,14 @@
 
 ## 什麼是 MCP？
 
-MCP 是 Claude Code 的外掛系統。把 MCP servers 想成給 Claude 超越基本能力的外掛：
+MCP 是一個開放標準，讓 AI 應用程式連接外部系統。每個 MCP server 都會給 Claude 內建工具以外的新工具：
 
 - **存取外部資料來源**（資料庫、APIs、檔案系統）
 - **執行專業工具**（Git、套件管理器、雲服務）
 - **維護持久脈絡**（memory、知識圖譜）
 - **整合開發工具**（IDEs、CI/CD、專案管理）
+
+MCP servers 並不是 Claude Code 的外掛系統：[plugin](https://code.claude.com/docs/en/plugins) 是一種套件，可以把 MCP servers 與 skills、subagents、hooks 打包在一起。
 
 ## MCP 架構
 
@@ -34,23 +36,27 @@ MCP 是 Claude Code 的外掛系統。把 MCP servers 想成給 Claude 超越基
 
 ## 新增 MCP Servers
 
-請務必使用官方 CLI 方法：
+使用 `claude mcp` CLI（或在 session 中使用 `/mcp`）：
 
 ```bash
-# 基本語法
-claude mcp add --scope <scope> <name> [options] -- <command>
+# 透過 HTTP 連接遠端 server（託管服務的建議做法）
+claude mcp add --transport http <name> <url>
+
+# 本地 stdio server：-- 之後的內容是啟動 server 的指令
+claude mcp add [--scope <scope>] <name> [-e KEY=value] -- <command> [args...]
 
 # Scopes：
-# --scope user     → ~/.claude/settings.json（所有專案）
-# --scope project  → .claude/settings.json（此專案）
+# --scope local    → ~/.claude.json，僅此專案、僅自己可用（預設）
+# --scope project  → repo 根目錄的 .mcp.json，與團隊共享
+# --scope user     → ~/.claude.json，你的所有專案
 
 # 環境變數使用 -e flag：
-claude mcp add --scope project memory -e MEMORY_FILE_PATH=./.claude/memory.json -- npx -y @modelcontextprotocol/server-memory
+claude mcp add --scope project memory -e MEMORY_FILE_PATH=./.claude/memory.jsonl -- npx -y @modelcontextprotocol/server-memory
 ```
 
-> **注意：** `-e` flag 為 MCP server 設定環境變數。可使用多個 `-e` flags 設定多個變數。
+> **注意：** `-e`（`--env`）為 server 設定環境變數，可接受多組 `KEY=value`。請像上面一樣把 server 名稱放在 `-e` 之前：緊接在 `-e` 後面的名稱會被當成另一組變數。SSE transport 已被棄用，請使用 `--transport http`。
 
-## 基本 MCP Servers
+## 必備 MCP Servers
 
 ### 1. 檔案系統存取
 
@@ -59,39 +65,40 @@ claude mcp add --scope project filesystem \
   -- npx -y @modelcontextprotocol/server-filesystem .
 ```
 
-**能力：** 讀寫檔案、建立目錄、列出內容、檔案搜尋
+**能力：** 讀寫檔案、建立目錄、列出內容、搜尋檔案。Claude Code 內建的 Read、Edit、Glob、Grep 工具已涵蓋專案目錄，只有需要存取專案以外的目錄時才加入這個 server。
 
 ### 2. Memory（知識圖譜）
 
 ```bash
 # 重要：務必使用 MEMORY_FILE_PATH 做專案隔離
 claude mcp add --scope project memory \
-  -e MEMORY_FILE_PATH=./.claude/memory.json \
+  -e MEMORY_FILE_PATH=./.claude/memory.jsonl \
   -- npx -y @modelcontextprotocol/server-memory
 ```
 
-**能力：** 持久化知識儲存、跨 session 記憶、語意搜尋
+**能力：** 明確的知識圖譜（entities、relations、observations），存成 JSONL 檔案，可跨 sessions 搜尋。Claude Code 本身已有內建記憶（CLAUDE.md 與 auto memory）；何時值得加入知識圖譜，請見 [Memory 系統](./memory-system.md)。
 
-**警告：** 沒有 `MEMORY_FILE_PATH`，所有專案會共用同一個 memory！
+**警告：** 沒有 `MEMORY_FILE_PATH` 的話，所有專案會共用同一個 memory！
 
 ### 3. Git 操作
 
 ```bash
+# 參考實作的 Git server 是 Python 套件；uvx 不需安裝即可執行
 claude mcp add --scope project git \
-  -- npx -y @modelcontextprotocol/server-git
+  -- uvx mcp-server-git --repository .
 ```
 
-**能力：** Git status、log、diff、branch 操作、file blame
+**能力：** Git status、log、diff、分支操作、file blame
 
 ### 4. GitHub 整合
 
 ```bash
-claude mcp add --scope user github \
-  -e GITHUB_TOKEN=<your-token> \
-  -- npx -y @modelcontextprotocol/server-github
+# GitHub 官方遠端 server（舊的 @modelcontextprotocol/server-github 已棄用）
+claude mcp add --scope user --transport http github https://api.githubcopilot.com/mcp \
+  --header "Authorization: Bearer <your-github-pat>"
 ```
 
-**能力：** Issues、PRs、repository 管理、程式碼搜尋
+**能力：** Issues、PRs、repository 管理、程式碼搜尋、Actions
 
 ### 5. Sequential Thinking
 
@@ -100,93 +107,77 @@ claude mcp add --scope user sequential-thinking \
   -- npx -y @modelcontextprotocol/server-sequential-thinking
 ```
 
-**能力：** 結構化推理、多步驟分析、複雜問題分解
+**能力：** 結構化推理、多步驟分析、複雜問題拆解
 
 ### 6. Context7（即時文件）
 
 ```bash
-claude mcp add --scope user context7 \
-  -- npx -y context7-mcp
+# 遠端 server；到 context7.com 取得 API key（或執行：npx ctx7 setup --claude）
+claude mcp add --scope user --transport http context7 https://mcp.context7.com/mcp \
+  --header "Authorization: Bearer <your-context7-api-key>"
 ```
 
 **能力：** 即時官方文件、最新的函式庫參考
 
 ## 資料庫 MCP Servers
 
-### PostgreSQL
+PostgreSQL 與 SQLite 的原始參考實作 server 已封存。請優先使用資料庫廠商維護的 server：
+
+### Supabase（PostgreSQL）
 
 ```bash
-claude mcp add --scope project postgres \
-  -e DATABASE_URL="postgresql://user:pass@localhost:5432/db" \
-  -- npx -y @modelcontextprotocol/server-postgres
-```
-
-### SQLite
-
-```bash
-claude mcp add --scope project sqlite \
-  -e DATABASE_PATH="./data/app.db" \
-  -- npx -y @modelcontextprotocol/server-sqlite
+# 官方遠端 server；加入後用 /mcp 完成認證
+claude mcp add --scope project --transport http supabase "https://mcp.supabase.com/mcp?project_ref=<project-ref>&read_only=true"
 ```
 
 ### MongoDB
 
 ```bash
-claude mcp add --scope project mongodb \
-  -e MONGODB_URI="mongodb://localhost:27017/db" \
-  -- npx -y @modelcontextprotocol/server-mongodb
+# MongoDB 官方 server，唯讀模式
+claude mcp add --scope local mongodb \
+  -e MDB_MCP_CONNECTION_STRING="mongodb://localhost:27017/db" \
+  -- npx -y mongodb-mcp-server --readOnly
 ```
+
+不要把資料庫憑證放進 `.mcp.json`：像上面一樣使用 local scope，或在共享設定中引用 `${DATABASE_URL}` 這類環境變數。
 
 ## MCP Scope 層級
 
-MCP servers 遵循 Claude Code 的四層層級：
+server 定義的位置決定了誰能使用它：
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Layer 1: Enterprise                         │
-│  位置: /etc/claude-code/settings.json        │
-│  控制: IT 部門（allowlist）                   │
+│  Managed（組織）                              │
+│  位置: managed-mcp.json 或 managed           │
+│        settings（由 IT 控制）                 │
 ├─────────────────────────────────────────────┤
-│  Layer 2: User Global                        │
-│  位置: ~/.claude/settings.json               │
-│  用途: 個人 MCP servers（github 等）          │
+│  Local scope（預設）                          │
+│  位置: ~/.claude.json，此專案路徑底下          │
+│  用途: 個人或含憑證的 servers                 │
 ├─────────────────────────────────────────────┤
-│  Layer 3: Project                            │
-│  位置: .mcp.json（不是 settings.json）        │
-│  用途: 專案專用（db、memory）                 │
+│  Project scope                               │
+│  位置: repo 根目錄的 .mcp.json               │
+│  用途: 共享 servers（提交到 git）             │
 ├─────────────────────────────────────────────┤
-│  Layer 4: Project Local                      │
-│  位置: .mcp.local.json                       │
-│  用途: 個人覆寫（gitignored）                 │
+│  User scope                                  │
+│  位置: ~/.claude.json（最上層）               │
+│  用途: 所有專案都用的個人 servers             │
 └─────────────────────────────────────────────┘
 ```
 
-> **重要：** 專案範圍的 MCP servers 存在 `.mcp.json`（不是 `.claude/settings.json`）。使用 `claude mcp add --scope project` 會自動建立/更新正確的檔案。
+> **重要：** MCP servers 從來不設定在 `settings.json`。請用 `claude mcp add --scope project` 建立或更新 `.mcp.json`；每位使用者第一次使用專案 servers 時，Claude Code 都會請他確認。
 
-**優先順序：** Local (.mcp.local.json) > Project (.mcp.json) > User (~/.claude.json) > Enterprise (/etc/claude-code/settings.json)
+同名 server 定義在多處時的**優先順序**：Local > Project > User > plugin 提供的 servers > claude.ai connectors。組織的 managed servers 優先於以上全部。
 
 ## MCP Context 成本
 
-每個 MCP server 會消耗 context tokens。請注意：
+MCP tool search 預設開啟：Claude Code 會在需要時才載入 server 的工具定義，而不是每次請求都送出所有工具，所以大型 server 不再一開始就佔用數千個 tokens。不過 servers 仍會增加程序負擔與 context 中的工具名稱，而且每個啟用的 server 都代表 Claude 可以採取的另一組動作。
 
-| MCP Server | 約略 Tokens | 建議 |
-|------------|----------------|----------------|
-| hubspot | ~1,800 | 小型 |
-| netlify | ~2,000 | 小型 |
-| figma | ~2,500 | 可接受 |
-| notion | 已優化 | 官方 |
-| vercel | ~3,000 | 可接受 |
-| stripe | ~4,000 | 中型 |
-| linear | ~6,200 | 大型 |
-| atlassian | ~7,100 | 大型 |
-| asana | ~12,800 | 太大 |
-| sentry | ~14,000 | 謹慎使用 |
-
-**最佳實踐：** 只啟用你實際在用的 MCP servers。
+**最佳實踐：** 只啟用你實際在用的 MCP servers，並用 `/context` 查看 session 的 context 花在哪裡。
 
 ## 設定檔
 
-> **重要：** 專案 MCP servers 放在 `.mcp.json`，不是 `.claude/settings.json`。請務必使用 `claude mcp add --scope project` 來建立正確的設定。
+> **重要：** 專案 MCP servers 放在 `.mcp.json`，不是 `.claude/settings.json`。請一律使用 `claude mcp add --scope project` 建立正確的設定。
 
 ### 專案 MCP 設定（.mcp.json）
 
@@ -201,45 +192,52 @@ MCP servers 遵循 Claude Code 的四層層級：
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-memory"],
       "env": {
-        "MEMORY_FILE_PATH": "./.claude/memory.json"
+        "MEMORY_FILE_PATH": "./.claude/memory.jsonl"
       }
     }
   }
 }
 ```
 
-### 使用者全域設定（~/.claude.json）
+遠端 server 需要在 `url` 旁加上 `"type": "http"`；只有 `url` 沒有 `type` 的項目會被拒絕。`${VAR}` 與 `${VAR:-default}` 會從環境變數展開，因此這個檔案可以在不含 secrets 的情況下提交：
 
 ```json
 {
   "mcpServers": {
     "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": {
-        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_PAT}"
       }
     }
   }
 }
 ```
 
+### 使用者設定（~/.claude.json）
+
+`claude mcp add --scope user` 會寫入 `~/.claude.json` 最上層的 `mcpServers`，`--scope local` 則寫在同一個檔案中目前專案的項目底下。請讓 CLI 管理這個檔案，不要手動編輯。
+
 ## MCP 管理指令
 
 ```bash
-# 列出所有 MCP servers
+# 列出所有 MCP servers 與連線狀態
 claude mcp list
 
-# 新增 server
+# 顯示單一 server 的設定
+claude mcp get <name>
+
+# 加入新 server
 claude mcp add --scope project <name> -- <command>
 
 # 移除 server
 claude mcp remove --scope project <name>
 
-# 檢查 server 狀態
-claude mcp status
+# 在 session 中：狀態、OAuth 登入、重新連線
+/mcp
 
-# 重設專案 MCP 選擇（疑難排解）
+# 重設專案 MCP 的核准選擇（疑難排解）
 claude mcp reset-project-choices
 ```
 
@@ -247,12 +245,12 @@ claude mcp reset-project-choices
 
 ### 資料庫查詢
 
-啟用 postgres MCP 後：
+啟用資料庫 MCP 後：
 
 ```
 使用者：「顯示最近 7 天註冊的使用者」
 
-Claude：[使用 postgres MCP]
+Claude：[使用資料庫 MCP]
   → 查詢：SELECT * FROM users WHERE created_at > NOW() - INTERVAL '7 days'
   → 回傳格式化的結果
 ```
@@ -295,9 +293,9 @@ claude mcp reset-project-choices
 claude mcp add --scope project <name> -- <command>
 ```
 
-### 權限問題
+### 專案 Server 尚未核准
 
-確保專案設定中有 `enableAllProjectMcpServers: true`。
+互動式 session 中，`.mcp.json` 的 servers 會等待核准。請在啟動提示或 `/mcp` 中核准，或在設定的 `enabledMcpjsonServers` 列出信任的 servers；對你信任的 repository，也可以在 `.claude/settings.local.json` 設定 `enableAllProjectMcpServers: true`。
 
 ### 環境變數問題
 
@@ -316,24 +314,24 @@ claude mcp add --scope project <name> -- <command>
 | 功能 | MCP | 內建工具 | Hooks |
 |---------|-----|----------------|-------|
 | 外部資料存取 | 主要用途 | 有限 | 否 |
-| 持久儲存 | Memory MCP | 僅限 Session | 否 |
+| 持久儲存 | Memory MCP（知識圖譜） | CLAUDE.md、auto memory | 否 |
 | 自訂整合 | 可擴展 | 固定 | 透過指令 |
-| Context 成本 | 可變 | 已包含 | 最小 |
+| Context 成本 | 需要時才載入（tool search） | 已包含 | 最小 |
 
 ## 開始使用
 
 **今天：**
-1. 加入 filesystem 和 memory MCP 到你的專案
-2. 使用 `MEMORY_FILE_PATH` 做專案隔離
-3. 儲存一個重要決策到 memory
+1. 加入一個你需要的 MCP server（GitHub、你的資料庫或 Context7）
+2. 執行 `/mcp` 確認已連線
+3. 請 Claude 在實際任務中使用它
 
 **這週：**
-1. 如果適用，加入資料庫 MCP
-2. 設定 GitHub MCP 做 issue 追蹤
-3. 探索 memory 指令（/memory-*）
+1. 透過 `.mcp.json`（`--scope project`）共享團隊 servers
+2. 把憑證放在 local scope 或 `${VAR}` 引用中
+3. 只有在 CLAUDE.md 與 auto memory 之外還想要明確的知識圖譜時，才加入 memory server
 
 ---
 
-*MCP 將 Claude Code 從獨立的助手轉變為整合的開發平台。*
+*MCP 讓 Claude Code 從獨立助手轉變為整合式開發平台。*
 
-*參考：[Model Context Protocol](https://modelcontextprotocol.io/) | [Claude Code Docs](https://docs.anthropic.com/en/docs/claude-code)*
+*參考：[Model Context Protocol](https://modelcontextprotocol.io/) | [Claude Code MCP 文件](https://code.claude.com/docs/en/mcp)*

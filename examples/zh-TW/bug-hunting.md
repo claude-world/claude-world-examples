@@ -23,15 +23,17 @@
 
 ### 2. 讓 Claude 啟動 Parallel 調查
 
-Claude 會自動啟動多個 agents：
+Claude 會自行把程式碼庫的搜尋工作委派給 subagents，你也可以明確要求：「use subagents to investigate this in parallel」。每個 subagent 都在自己的 context window 中探索，最後回報摘要：
 
 ```
 Agent 1 (Explore): 對應認證流程
-Agent 2 (Grep): 搜尋 session/timeout/expiry 程式碼
-Agent 3 (Grep): 檢查 token 更新邏輯
-Agent 4 (Read): 檢視 auth middleware
-Agent 5 (Bash): 檢查近期 auth 檔案的 commits
+Agent 2 (Explore): 搜尋 session/timeout/expiry 程式碼
+Agent 3 (Explore): 檢查 token 更新邏輯
+Agent 4 (Explore): 檢視 auth middleware
+Agent 5 (general-purpose): 檢查近期 auth 檔案的 commits
 ```
+
+括號中標示的是 subagent 類型。Grep、Read、Bash 是這些 subagents 使用的工具，不是 agent 類型。Subagents 會在背景執行，你可以繼續工作；用 `/tasks` 查看它們。若希望 Claude 在你批准修復前完全不編輯檔案，請在 plan mode 中執行這一步（`Shift+Tab` 或 `/plan`）。
 
 ### 3. 審視發現
 
@@ -61,6 +63,8 @@ Claude: [實作修復]
 - 為新行為添加測試
 - 以描述性訊息提交
 ```
+
+如果修復效果不如預期，按兩次 `Esc` 或執行 `/rewind`，把程式碼還原到變更之前，再嘗試其他做法。
 
 ## 範例情境
 
@@ -133,7 +137,7 @@ Bug: [描述]
 
 ```
 Bug: API 回傳 500 錯誤
-錯誤: "TypeError: Cannot read property 'id' of undefined"
+錯誤: "TypeError: Cannot read properties of undefined (reading 'id')"
 端點: POST /api/projects
 ```
 
@@ -178,8 +182,8 @@ Claude 的 parallel agents 通常會檢查：
 3. **審視綜合結果** - Claude 結合所有發現
 4. **批准修復** - 一個指令完成實作
 
-使用這個模式的平均 bug 修復時間：**2-5 分鐘**
+只要 bug 描述清楚，這個模式通常能讓你在**幾分鐘而非幾小時**內得到經過測試的修復。
 
 ---
 
-另見：[Director Mode 基礎](../concepts/director-mode-basics.md)
+另見：[Director Mode 基礎](../../concepts/zh-TW/director-mode-basics.md)

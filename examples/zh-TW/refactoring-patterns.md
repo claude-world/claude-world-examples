@@ -40,6 +40,8 @@ Claude 回傳優先順序清單，包含位置和建議修復。
 - 風險評估」
 ```
 
+請在 plan mode 中進行這一步（按 `Shift+Tab` 直到狀態列顯示 `⏸ plan mode on`，或輸入 `/plan`），讓 Claude 在你批准計畫前只分析受影響的程式碼，不做任何編輯。
+
 ### 步驟 3: 執行並測試
 
 ```
@@ -273,7 +275,8 @@ function hasRoleBasedAccess(user, resource) {
     employee: () => resource.owner === user.id,
   };
 
-  return accessRules[user.role]?.() ?? false;
+  // 只比對自有屬性：像 "constructor" 這樣的角色不能對應到 Object.prototype
+  return Object.hasOwn(accessRules, user.role) && accessRules[user.role]();
 }
 ```
 
@@ -352,6 +355,8 @@ function hasRoleBasedAccess(user, resource) {
 3. 每次成功變更後提交」
 ```
 
+每個提示也會建立 checkpoint：某一步出錯時，按兩次 `Esc` 或執行 `/rewind` 即可撤銷 Claude 在那一步的編輯。Checkpoint 只追蹤 Claude 的檔案編輯，不包含 shell 指令，因此它是 git 的補充，而不是替代品。
+
 ### 3. 為高風險變更使用 Feature Flags
 
 ```javascript
@@ -371,6 +376,14 @@ if (featureFlags.useNewPaymentProcessor) {
 - 呼叫者的遷移路徑
 - 效能影響（如果有的話）」
 ```
+
+### 5. 隔離大型重構
+
+```bash
+claude --worktree refactor-payments
+```
+
+這會在獨立的 git worktree 與分支中啟動 session，長時間的重構就不會和主要 checkout 中的其他工作互相衝突。
 
 ## 重構反模式
 
@@ -417,10 +430,19 @@ if (featureFlags.useNewPaymentProcessor) {
 「將 repository 模式應用到所有資料庫存取程式碼」
 ```
 
+在一個模組上驗證過該模式後，`/batch 將 repository 模式應用到所有資料庫存取程式碼` 會把其餘工作拆成 5 到 30 個獨立單元，並先給你看計畫。你批准後，Claude 會為每個單元啟動一個背景 subagent，各自在獨立的 git worktree 中實作該單元、執行測試並發布變更。
+
 ### 程式碼異味偵測
 ```
 「識別程式碼異味：過長方法、功能嫉妒、資料泥團」
 ```
+
+### 內建的清理審查
+```
+/simplify
+```
+
+檢查你變更過的程式碼，從重用現有 helper、簡化、效率與抽象層級等面向找出改進點，並直接套用修正。它不會找 bug；找 bug 請執行 `/code-review`。
 
 ### 前後指標比較
 ```

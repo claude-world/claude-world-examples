@@ -62,8 +62,11 @@ A good director does:
 
 With proper context, Claude can:
 - Make reasonable decisions without asking
-- Use parallel agents to work faster
+- Use parallel subagents to research faster
+- Verify its own work when you give it a check to run (tests, build, lint)
 - Complete entire features in one go
+
+By default, current Claude Code starts interactive sessions in auto mode, where a classifier reviews actions instead of asking you about each one. `Shift+Tab` cycles permission modes, including plan mode for a read-only planning pass. CLAUDE.md is guidance, not enforcement, so put hard limits (such as `git push`) in permission rules in `.claude/settings.json`.
 
 ### 4. Review, Don't Supervise
 
@@ -72,6 +75,8 @@ Instead of watching every step:
 2. Let Claude work
 3. Review the completed PR
 4. Provide feedback if needed
+
+If a direction looks wrong, press `Esc` to interrupt, or `Esc Esc` (`/rewind`) to restore code and conversation to an earlier checkpoint.
 
 ## The Mindset Shift
 
@@ -85,17 +90,19 @@ Instead of watching every step:
 
 ## Getting Started
 
-1. **Write a comprehensive CLAUDE.md** - Include your tech stack, preferences, and common patterns
+1. **Write a focused CLAUDE.md** - Run `/init` for a starter, then add your tech stack, preferences, and common patterns (aim for under ~200 lines)
 2. **Use imperative commands** - "Implement X" instead of "Can you help with X?"
 3. **Trust the process** - Let Claude make decisions within your constraints
-4. **Iterate** - Improve your CLAUDE.md based on what questions Claude asks
+4. **Iterate** - Improve your CLAUDE.md based on what questions Claude asks (ask Claude to add the answer, or open the file with `/memory`)
+
+> Director Mode is a working style, not a built-in Claude Code feature. The community [director-mode-lite](https://github.com/claude-world/director-mode-lite) plugin packages it as skills such as `/workflow`, `/focus-problem` and `/smart-commit`. Install it with `/plugin marketplace add claude-world/director-mode-lite`, then `/plugin install director-mode-lite@director-mode-lite` (or clone the repo and run `./install.sh` for the full project-local setup). Installed as a plugin, each skill is also available under its namespaced name, such as `/director-mode-lite:workflow`.
 
 ## Example Session
 
 ```
 You: "Implement user profile editing with avatar upload"
 
-Claude: [Launches 4 parallel agents]
+Claude: [Launches 4 parallel Explore subagents]
 - Agent 1: Analyzes existing user model
 - Agent 2: Checks file upload patterns in codebase
 - Agent 3: Reviews UI component library

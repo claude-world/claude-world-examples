@@ -46,6 +46,32 @@
 - Include request IDs for tracing
 ```
 
+### 保護 Claude Code 本身
+
+CLAUDE.md 引導 Claude 想做的事，但不會強制執行任何東西。硬性限制請放在 `.claude/settings.json`，Claude Code 會在每次工具呼叫時強制執行：
+
+```json
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Bash(curl *)",
+      "Bash(git push --force *)"
+    ],
+    "ask": ["Bash(git push *)"]
+  }
+}
+```
+
+- **Deny 規則**優先於 allow 與 ask 規則。檔案請用 `Read(...)` 與 `Edit(...)`：`Write(...)` 路徑規則永遠不會被檢查，`.claudeignore` 也沒有作用。
+- **Hooks** 補上規則無法表達的檢查，例如 commit 前掃描已暫存的變更是否含有 secrets。請見 [Hooks 模式](../../examples/zh-TW/hooks-patterns.md)。
+- **`/sandbox`** 為 Bash 指令加上作業系統層級的檔案系統與網路隔離，也能涵蓋自行開檔的腳本。
+- **權限模式：** 在真實的 repository 中使用預設（Manual）模式或 `auto` 模式；`bypassPermissions`（`--dangerously-skip-permissions`）只留給可丟棄的容器與 VM。
+- **MCP servers 與 plugins** 會以你的權限執行。只從你信任的來源安裝，並把憑證放在 local scope 或環境變數中。
+
 ## 常見漏洞與修復
 
 ### 1. SQL 注入
@@ -238,17 +264,19 @@ app.use(helmet.contentSecurityPolicy({
 "Run a security scan on this codebase checking for OWASP Top 10 vulnerabilities"
 ```
 
-Claude 將檢查：
-- 注入缺陷
-- 損壞的身份驗證
-- 敏感資料暴露
-- XXE
+Claude 將檢查 OWASP Top 10（2021 版）：
 - 損壞的存取控制
+- 加密機制失效（敏感資料暴露）
+- 注入，包括 XSS
+- 不安全的設計
 - 安全配置錯誤
-- XSS
-- 不安全的反序列化
-- 已知漏洞元件
-- 不足的日誌記錄
+- 易受攻擊與過時的元件
+- 身分識別與驗證失效
+- 軟體與資料完整性失效（包括不安全的反序列化）
+- 安全日誌與監控失效
+- 伺服器端請求偽造（SSRF）
+
+要檢查目前分支上的變更，請執行內建的 `/security-review` 指令；它審查的是分支的 diff，而不是整個程式碼庫。
 
 ### 步驟 2：身份驗證審查
 
@@ -352,6 +380,11 @@ Claude 將檢查：
 
 ### 提交前安全審查
 ```
+/security-review
+```
+
+或用一般語言提出要求：
+```
 "Review these changes for security issues before I commit"
 ```
 
@@ -433,7 +466,8 @@ if (!API_KEY) throw new Error('API_KEY required');
 6. **絕不記錄敏感資料** - 密碼、token、PII
 7. **使用安全標頭** - helmet、CSP、HSTS
 8. **保持相依套件更新** - 定期 npm audit
-9. **定期安全審查** - 使用 Claude 進行自動掃描
+9. **定期安全審查** - 使用 Claude 進行自動掃描，合併前執行 `/security-review`
+10. **鎖定 Claude Code 本身** - 用 deny 規則保護 secrets、用 hooks 檢查、用 `/sandbox` 隔離
 
 **黃金法則**：假設所有輸入都是惡意的，直到驗證過。
 

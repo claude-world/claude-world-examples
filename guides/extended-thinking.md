@@ -4,15 +4,18 @@
 
 ## Quick Reference
 
-| Model | Extended Thinking | Default | Effort Levels |
-|-------|-------------------|---------|---------------|
-| **Opus 4.6** | Yes | ON (v2.0.67+) | low / medium / high |
-| **Sonnet 4.6** | Yes | OFF | N/A |
-| **Haiku 4.5** | Yes | OFF | N/A |
+| Model | Thinking | Default effort in Claude Code | Effort levels |
+|-------|----------|-------------------------------|---------------|
+| **Opus 5.5** | Always on (adaptive) | `medium` | low / medium / high / xhigh / max |
+| **Sonnet 5.5** | Always on (adaptive) | `medium` | low / medium / high / xhigh / max |
+| **Haiku 5.5** | Always on (adaptive) | `medium` | low / medium / high / xhigh / max |
+| **Fable 5.1** | Always on (adaptive) | `high` | low / medium / high / xhigh / max |
+
+On current models you don't switch thinking on or off. You set the **effort level**, and the model decides on each step whether and how much to think.
 
 ## What is Extended Thinking?
 
-Extended Thinking (also called "Thinking Mode") gives Claude more time to reason through complex problems before responding.
+Extended thinking is the reasoning Claude does before it responds. Current models use **adaptive reasoning**: a simple step gets a quick answer, a hard one gets deeper reasoning, and the effort level shifts that balance.
 
 ```
 Normal Mode:
@@ -27,82 +30,116 @@ Extended Thinking:
               └──────────────────┘
 ```
 
-## Enabling Extended Thinking
+## Controlling Thinking
 
-### Method 1: Via /config
+### Method 1: /effort (the main control)
 
 ```
-Thinking Mode: ON
+/effort          → open the effort slider
+/effort high     → set a level for this model (saved as your default)
+/effort auto     → clear your saved level
 ```
 
-### Method 2: Via Settings
+You can also adjust effort with the left/right arrows in the `/model` picker. The session header shows the active level, for example "with medium effort".
 
-> **Note:** The settings below show the conceptual configuration. Actual Claude Code settings may use different property names. Check `/config` in Claude Code for current options.
+### Method 2: At Launch
+
+```bash
+claude --effort xhigh                  # this session only
+CLAUDE_CODE_EFFORT_LEVEL=high claude   # overrides settings and frontmatter
+```
+
+### Method 3: Settings
 
 `.claude/settings.json`:
 ```json
 {
-  "model": "opus"
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "effortLevel": "high"
 }
 ```
 
-Thinking mode is typically controlled via `/config` interactively rather than settings files.
+`effortLevel` accepts `low`, `medium`, `high`, or `xhigh`; `max` is never saved and applies to one session. When you pick a level with `/effort`, Claude Code stores it per model under `modelSettings` in your user settings.
 
-### Method 3: In Prompt
+### Method 4: `ultrathink` for One Turn
 
 ```
-"Enable extended thinking for this security analysis."
+"ultrathink: why does this cache invalidation fail under concurrent writes?"
 ```
 
-### Method 4: Quick Model Switch
+Including `ultrathink` anywhere in a prompt asks for deeper reasoning on that turn without changing your effort setting. Other phrases such as "think hard" or "think more" are ordinary text, not keywords.
 
-Press `Option+P` (macOS) or `Alt+P` (Windows/Linux) during prompting.
+### Method 5: Skill and Subagent Frontmatter
 
-## Effort Levels (Opus 4.6 Only)
+A skill or subagent can carry its own level, which applies while it runs:
 
-| Effort | Thinking Depth | Use Case |
-|--------|----------------|----------|
-| `low` | Minimal | Quick tasks, batch operations |
-| `medium` | Balanced | Default, most development tasks |
-| `high` | Maximum | Architecture, security, critical decisions |
+```markdown
+---
+name: security-reviewer
+description: Reviews authentication and payment code for vulnerabilities
+model: opus
+effort: max
+---
+
+Review the code you are given for security issues and report findings with severity levels.
+```
+
+### Turning Thinking Off (Older Models Only)
+
+Opus 5.5, Sonnet 5.5, Haiku 5.5, and the Fable models always think. `Option+T` (macOS) / `Alt+T` (Windows/Linux), the thinking toggle in `/config` (`alwaysThinkingEnabled`), and `MAX_THINKING_TOKENS=0` only affect older models such as Opus 4.6 and Sonnet 4.6. To lower thinking on a current model, lower the effort.
+
+Thinking is collapsed by default. Press `Ctrl+O` to open the transcript viewer and read it. Press `Option+P` (macOS) or `Alt+P` (Windows/Linux) to switch models without clearing your prompt.
+
+## Effort Levels
+
+| Effort | Use Case |
+|--------|----------|
+| `low` | Quick exchanges you review step by step: brainstorming, a first sketch, a rename |
+| `medium` | Default on the 5.5 models: day-to-day work with a clear scope |
+| `high` | Work where verification matters, such as fixing a bug in an existing codebase |
+| `xhigh` | Deeper reasoning at higher token spend: architecture and trade-off analysis |
+| `max` | Hard problems you want Claude to work through on its own, such as hunting for security vulnerabilities |
+
+`max` can show diminishing returns and is prone to overthinking, so test it before adopting it broadly. **Ultracode** is a separate setting (`/effort ultracode`), not a level: it has Claude orchestrate a dynamic workflow for substantive tasks at the current effort.
 
 ### Setting Effort Level
 
-**In prompts:**
+**In prompts:** a prompt can't change the level, but Claude follows guidance within it:
 ```
-"Analyze this authentication system with high effort.
-I need thorough security analysis."
+"This one matters. Take the time to check edge cases before you answer."
 ```
+Change the level itself with `/effort`, or use `ultrathink` for a single turn.
 
-**In Task tool:**
+**For a subagent:**
 ```javascript
-Task({
+// Conceptual: Claude makes this call when you ask for a high-effort subagent
+Agent({
   subagent_type: "general-purpose",
+  description: "Design payment architecture",
   model: "opus",
+  effort: "high",
   prompt: `
-    Effort: high
-
     Design the payment processing architecture.
     Consider all edge cases and failure modes.
   `
 })
 ```
 
-## When to Use Extended Thinking
+## When to Use Higher Effort
 
 ### High-Value Scenarios
 
 | Scenario | Effort | Why |
 |----------|--------|-----|
-| Architecture decisions | High | Avoid months of rework |
-| Security reviews | High | Catch vulnerabilities early |
-| Complex refactoring | Medium | Better design patterns |
-| Bug investigation | Medium | Faster root cause analysis |
-| Trade-off analysis | High | Informed decision making |
+| Architecture decisions | xhigh | Avoid months of rework |
+| Security reviews | max | Catch vulnerabilities early |
+| Complex refactoring | high | Better design patterns |
+| Bug investigation | high | Faster root cause analysis |
+| Trade-off analysis | xhigh | Informed decision making |
 
-### Skip Thinking For
+### Keep Effort Low For
 
-- File searches (use Explore agent)
+- File searches (use the Explore subagent)
 - Pattern matching
 - Simple code changes
 - Documentation updates
@@ -113,9 +150,9 @@ Task({
 ### Pattern 1: Architecture Decision
 
 ```
-"Enable high-effort thinking.
+/effort xhigh
 
-Design the real-time notification system.
+"Design the real-time notification system.
 Requirements:
 - 100K concurrent users
 - <100ms delivery latency
@@ -128,7 +165,10 @@ Analyze options and recommend architecture."
 ### Pattern 2: Security Audit
 
 ```
-"Using Opus with high effort, review authentication.
+/model opus
+/effort max
+
+"Review authentication.
 
 Check for:
 - OWASP Top 10 vulnerabilities
@@ -142,7 +182,7 @@ Report findings with severity levels."
 ### Pattern 3: Trade-off Analysis
 
 ```
-"Think deeply about this decision.
+"ultrathink about this decision.
 
 Option A: Monolith with modular structure
 Option B: Microservices from start
@@ -158,7 +198,7 @@ Analyze both with pros, cons, and recommendation."
 ### Pattern 4: Complex Debug
 
 ```
-"Use extended thinking to analyze this production issue.
+"ultrathink: analyze this production issue.
 
 Symptoms:
 - Response time: 50ms → 2s at 500 RPS
@@ -172,9 +212,9 @@ Identify potential causes and investigation steps."
 ### Pattern 5: Migration Planning
 
 ```
-"Effort: high
+/effort high
 
-Create migration plan from MongoDB to PostgreSQL.
+"Create migration plan from MongoDB to PostgreSQL.
 
 Current state:
 - 50 collections
@@ -192,35 +232,37 @@ Deliverables:
 
 ## Extended Thinking with Agents
 
-### Model Selection by Task
+### Model and Effort by Task
 
 ```
-Explore agents:     Haiku (no thinking)  - Speed
-Implementation:     Sonnet (thinking optional) - Balance
-Critical review:    Opus (thinking default) - Quality
+Explore agents:     main model, or your own Explore with model: haiku - Speed
+Implementation:     Sonnet, medium effort - Balance
+Critical review:    Opus, high or max effort - Quality
 ```
 
-### Explore Agent (No Thinking)
+Subagents inherit the main conversation's thinking configuration. Explore runs on the main conversation's model; to explore on Haiku, define a project subagent named `Explore` with `model: haiku`.
+
+### Explore Agent
 
 ```javascript
-Task({
+Agent({
   subagent_type: "Explore",
-  model: "haiku",
+  description: "Find authentication patterns",
   prompt: "Find authentication patterns (thoroughness: medium)"
 })
 ```
 
-**No thinking needed** - pure search and discovery.
+**Little thinking needed** - pure search and discovery.
 
-### Implementation Agent (Sonnet + Thinking)
+### Implementation Agent (Sonnet, Medium Effort)
 
 ```javascript
-Task({
+Agent({
   subagent_type: "general-purpose",
+  description: "Implement OAuth PKCE flow",
   model: "sonnet",
+  effort: "medium",
   prompt: `
-    Enable thinking mode.
-
     Implement OAuth 2.0 with PKCE flow.
     Consider:
     - State management
@@ -231,15 +273,15 @@ Task({
 })
 ```
 
-### Review Agent (Opus + High Effort)
+### Review Agent (Opus, Max Effort)
 
 ```javascript
-Task({
-  subagent_type: "security-auditor",
+Agent({
+  subagent_type: "security-auditor", // a custom agent in .claude/agents/, not built in
+  description: "Review payment security",
   model: "opus",
+  effort: "max",
   prompt: `
-    Effort: high
-
     Security review the payment integration.
     Check for:
     - PCI compliance issues
@@ -251,98 +293,94 @@ Task({
 
 ### Multi-Phase with Thinking
 
-Combine thinking for design, speed for execution:
+Combine deep reasoning for design with speed for execution:
 
 ```
-Phase 1 (Opus, high effort):
+Phase 1 (Opus, xhigh effort):
 - Design migration strategy
 - Plan architecture
 
-Phase 2 (Sonnet, no thinking):
+Phase 2 (Sonnet, medium effort):
 - Implement each migration step
 - Write tests
 
-Phase 3 (Haiku, no thinking):
+Phase 3 (Haiku, low effort):
 - Run tests in parallel
 - Generate reports
 ```
 
 ## Context Impact
 
-**Important:** Extended Thinking uses additional tokens internally.
+**Important:** Thinking tokens are billed as output, even when the thinking is collapsed.
 
 ```
-Normal Mode:
-├── Prompt Cache: Highly effective
-├── Context usage: Predictable
-└── Token efficiency: High
+Lower effort:
+├── Fewer thinking tokens per step
+├── Faster responses
+└── Lower cost
 
-Extended Thinking:
-├── Prompt Cache: Less effective
-├── Context usage: Variable
-└── Token efficiency: Lower (but higher quality)
+Higher effort:
+├── More reasoning and self-checking per step
+├── Slower responses, more tokens
+└── Switching level or model mid-session re-sends context without the prompt cache
 ```
 
-**Recommendation:** Use thinking selectively for high-value decisions.
+**Recommendation:** Pick the level per task, and avoid flipping effort back and forth within one session.
 
 ### Monitor Context Usage
 
-Status line (v2.0.65+):
-```
-Context: 45% used | Thinking: enabled | Model: opus
-```
+- `/context` shows what fills the context window
+- `/usage` shows plan usage and limits
+- The session header shows the effort level, and a custom status line can show it too (`/statusline`)
 
-For long sessions, disable thinking for routine tasks:
+For long sessions with routine work, lower the effort:
 ```
-"Disable thinking for these routine file updates."
+/effort low
 ```
 
 ## Configuration
 
-### Via /config Command
+### Via /effort and /model
 
-The recommended way to configure thinking mode is through the `/config` interactive menu:
-
-```
-Thinking Mode: ON / OFF
-Model: opus / sonnet / haiku
-```
+`/effort` sets the level; `/model` picks the model and has its own effort slider. Both apply immediately and save your choice for that model.
 
 ### Project Settings
 
-> **Note:** The configurations below are conceptual examples showing possible automation patterns. As of Claude Code 2.1.x, thinking mode is primarily controlled via `/config`. These advanced configurations may be supported in future versions or custom setups.
-
 ```json
 {
-  "model": "sonnet"
+  "model": "sonnet",
+  "effortLevel": "medium"
 }
 ```
 
-### Conceptual: Auto-Enable Triggers
+### Automatic Effort for Sensitive Code
 
-This pattern is not currently supported in standard Claude Code settings, but illustrates how automated thinking triggers might work:
+Claude Code has no keyword triggers for thinking, but a skill gets close: give it `paths` so Claude loads it when working on matching files, and an `effort` that applies while the skill is active.
 
-```json
-{
-  "thinkingTriggers": {
-    "keywords": ["security", "architecture", "design"],
-    "paths": ["auth/", "payment/", "admin/"],
-    "operations": ["create-file", "refactor"]
-  }
-}
+```markdown
+---
+name: sensitive-code-review
+description: Deep review for authentication, payment, and admin code. Use when changing files in these areas.
+paths:
+  - "src/auth/**"
+  - "src/payment/**"
+  - "src/admin/**"
+effort: max
+---
+
+Before finishing a change in these directories, check it for OWASP Top 10 issues,
+authorization gaps, and secrets in code. Report findings with severity levels.
 ```
-
-> **Current approach:** Use verbal instructions like "enable extended thinking for this security analysis" to activate thinking mode for specific tasks.
 
 ## Cost-Benefit Matrix
 
-| Scenario | Time Cost | Quality Gain | ROI |
-|----------|-----------|--------------|-----|
-| Architecture decision | +30s | Avoid months of rework | Very High |
-| Security review | +45s | Catch vulnerabilities | Very High |
-| Complex refactor | +20s | Better design | High |
-| Bug investigation | +15s | Faster root cause | High |
-| Routine coding | +10s | Marginal improvement | Low |
+| Scenario | Suggested Effort | Quality Gain | ROI |
+|----------|------------------|--------------|-----|
+| Architecture decision | xhigh | Avoid months of rework | Very High |
+| Security review | max | Catch vulnerabilities | Very High |
+| Complex refactor | high | Better design | High |
+| Bug investigation | high | Faster root cause | High |
+| Routine coding | low or medium | Marginal improvement | Low |
 
 ## Best Practices
 
@@ -350,7 +388,7 @@ This pattern is not currently supported in standard Claude Code settings, but il
 
 **Good:**
 ```
-"Enable extended thinking for this security analysis."
+"ultrathink: review this authorization middleware for privilege escalation."
 ```
 
 **Vague:**
@@ -361,7 +399,7 @@ This pattern is not currently supported in standard Claude Code settings, but il
 ### 2. Provide Rich Context
 
 ```
-"Using high-effort thinking, design the caching layer.
+"Design the caching layer.
 
 Context:
 - Current: No caching, 200ms average response
@@ -385,35 +423,35 @@ Output format:
 5. Risk assessment"
 ```
 
-### 4. Match Model to Task
+### 4. Match Model and Effort to Task
 
-| Task Type | Model | Thinking |
-|-----------|-------|----------|
-| Quick search | Haiku | OFF |
-| Standard code | Sonnet | OFF |
-| Complex logic | Sonnet | ON |
-| Critical review | Opus | ON (default) |
-| Architecture | Opus | ON + High effort |
+| Task Type | Model | Effort |
+|-----------|-------|--------|
+| Quick search | Haiku (custom Explore) | low |
+| Standard code | Sonnet | medium |
+| Complex logic | Sonnet | high |
+| Critical review | Opus | high or max |
+| Architecture | Opus | xhigh |
 
 ### 5. Phase Your Work
 
 ```
-High-stakes decisions → Opus with thinking
-Implementation → Sonnet
-Verification → Haiku parallel agents
+High-stakes decisions → Opus, xhigh effort
+Implementation → Sonnet, medium effort
+Verification → Haiku parallel agents, low effort
 ```
 
 ## Common Mistakes
 
-### Mistake 1: Using Thinking for Everything
+### Mistake 1: Maximum Effort for Everything
 
 ```
-❌ Enable thinking for file search
-❌ Enable thinking for simple edits
-❌ Enable thinking for test runs
+❌ max effort for file search
+❌ max effort for simple edits
+❌ max effort for test runs
 
-✅ Use Haiku/Explore for speed tasks
-✅ Reserve thinking for decisions that matter
+✅ Use low effort and Explore for speed tasks
+✅ Reserve high, xhigh, and max for decisions that matter
 ```
 
 ### Mistake 2: Not Providing Context
@@ -435,14 +473,15 @@ Verification → Haiku parallel agents
 
 ✅ Low effort: Batch operations
 ✅ Medium effort: Development tasks
-✅ High effort: Architecture, security
+✅ High or xhigh effort: Architecture, tricky bugs
+✅ Max effort: Security audits
 ```
 
 ## Summary
 
 | Principle | Action |
 |-----------|--------|
-| Use selectively | High-value decisions only |
+| Use selectively | Raise effort for high-value decisions only |
 | Match model to task | Haiku → Sonnet → Opus |
 | Provide context | More context = better thinking |
 | Request structure | Ask for formatted output |
@@ -453,5 +492,6 @@ Verification → Haiku parallel agents
 **Related:**
 - [Agents Guide](./agents-guide.md) - Using agents with thinking
 - [Extended Thinking Article](https://claude-world.com/articles/extended-thinking-guide) - Full deep dive
+- [Model configuration](https://code.claude.com/docs/en/model-config) - Official effort and thinking reference
 
 Back to [README](../README.md)

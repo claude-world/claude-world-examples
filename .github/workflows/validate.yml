@@ -1,0 +1,70 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 3 * * 1'  # Weekly, to catch link rot
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ACTIONLINT_VERSION: 1.7.12
+  ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+
+jobs:
+  lint:
+    name: YAML, workflows and code blocks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      - name: Install yamllint and actionlint
+        run: |
+          python -m pip install yamllint==1.38.0
+          curl -fsSLo actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          sudo mv actionlint /usr/local/bin/actionlint
+          rm actionlint.tar.gz
+          actionlint -version
+          # actionlint runs shellcheck on every run: script when it is installed
+          shellcheck --version
+
+      - name: yamllint
+        run: yamllint --strict .
+
+      - name: actionlint (workflow templates and CI)
+        run: actionlint templates/github-actions-suite/*.yml templates/release-monitor-workflow.yml .github/workflows/*.yml
+
+      - name: Markdown code blocks (JSON, YAML, embedded workflows)
+        run: python .github/scripts/check_code_blocks.py --actionlint
+
+  links:
+    name: Links
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check links with lychee
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --config lychee.toml --no-progress './**/*.md'
+          fail: true
+        env:
+          # Raises GitHub's rate limit for github.com links
+          GITHUB_TOKEN: ${{ github.token }}

@@ -32,7 +32,7 @@
 
 ### 步驟 2: 讓 Claude 分析
 
-Claude 啟動 parallel agents 來理解 context：
+Claude 啟動 parallel subagents（通常是內建的唯讀 Explore agent）來理解 context。功能規模較大時，可以直接要求：「research these areas in parallel using separate subagents」。
 
 ```
 Agent 1: 分析現有 EmailService
@@ -44,7 +44,7 @@ Agent 5: 查看現有郵件範本
 
 ### 步驟 3: 審視計畫
 
-Claude 提出實作方案：
+步驟 2 和 3 請在 plan mode 中進行：送出需求前，按 `Shift+Tab` 直到狀態列顯示 `⏸ plan mode on`，或輸入 `/plan`。Claude 會在不編輯檔案的情況下研究並提出實作方案；批准前可按 `Ctrl+G` 在文字編輯器中修改計畫。
 
 ```
 「這是我的實作計畫：
@@ -86,6 +86,8 @@ Claude: [實作所有內容]
 - 執行測試驗證
 ```
 
+批准計畫後就會離開 plan mode。每個提示都會建立 checkpoint，若實作方向走偏，按兩次 `Esc` 或執行 `/rewind` 即可還原程式碼與對話。想同時開發第二個功能又不讓編輯互相衝突，可用 `claude --worktree <name>` 在獨立的 git worktree 中啟動另一個 session。
+
 ### 步驟 5: 審視和迭代
 
 ```
@@ -108,6 +110,8 @@ Claude: 「實作完成。所有測試通過。
 
 準備好審視。」
 ```
+
+開 PR 之前，執行 `/code-review`（別名 `/review`），由全新的 subagent 檢查差異中的正確性 bug，再根據發現進行迭代。
 
 ## 範例：完整功能請求
 
@@ -230,4 +234,4 @@ Claude: [一次實作所有內容]
 
 ---
 
-另見：[Parallel Agents](../concepts/parallel-agents.md)
+另見：[Parallel Agents](../../concepts/zh-TW/parallel-agents.md)

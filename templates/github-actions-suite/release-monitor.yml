@@ -26,13 +26,18 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 env:
   # ========================================
   # CUSTOMIZE THESE VALUES
   # ========================================
   REPO_TO_MONITOR: anthropics/claude-code
   VERSION_FILE: .github/last-known-version.txt
-  CLAUDE_MODEL: claude-sonnet-4-20250514
+  # Summarizing release notes is a short, high-volume task, so Haiku fits.
+  # Use claude-sonnet-5-5 for longer write-ups.
+  CLAUDE_MODEL: claude-haiku-5-5
 
 jobs:
   check-release:
@@ -41,81 +46,66 @@ jobs:
       contents: write
     outputs:
       new_release: ${{ steps.check.outputs.new_release }}
-      version: ${{ steps.check.outputs.version }}
-      release_name: ${{ steps.check.outputs.release_name }}
-      release_url: ${{ steps.check.outputs.release_url }}
-      release_body: ${{ steps.check.outputs.release_body }}
+      version: ${{ steps.fetch.outputs.version }}
+      release_name: ${{ steps.fetch.outputs.release_name }}
+      release_url: ${{ steps.fetch.outputs.release_url }}
+      release_body: ${{ steps.fetch.outputs.release_body }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/checkout@v7
 
       - name: Get latest release
         id: fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "Fetching latest release from ${{ env.REPO_TO_MONITOR }}..."
+          echo "Fetching latest release from $REPO_TO_MONITOR..."
+          RELEASE_JSON=$(gh api "repos/$REPO_TO_MONITOR/releases/latest")
 
-          RELEASE_JSON=$(curl -s "https://api.github.com/repos/${{ env.REPO_TO_MONITOR }}/releases/latest")
-
-          if echo "$RELEASE_JSON" | jq -e '.message' > /dev/null 2>&1; then
-            echo "Error: $(echo "$RELEASE_JSON" | jq -r '.message')"
-            exit 1
-          fi
-
-          VERSION=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
-          RELEASE_NAME=$(echo "$RELEASE_JSON" | jq -r '.name')
-          RELEASE_URL=$(echo "$RELEASE_JSON" | jq -r '.html_url')
-          RELEASE_BODY=$(echo "$RELEASE_JSON" | jq -r '.body // "No release notes"' | head -c 3000)
-
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
-          echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
-          echo "$RELEASE_BODY" > /tmp/release_body.txt
+          VERSION=$(jq -r '.tag_name' <<<"$RELEASE_JSON")
+          {
+            echo "version=$VERSION"
+            echo "release_name=$(jq -r '(.name // .tag_name) | gsub("[\r\n]"; " ")' <<<"$RELEASE_JSON")"
+            echo "release_url=$(jq -r '.html_url' <<<"$RELEASE_JSON")"
+            # Base64 keeps multi-line release notes on a single output line
+            echo "release_body=$(jq -r '.body // "No release notes"' <<<"$RELEASE_JSON" | head -c 3000 | base64 -w 0)"
+          } >> "$GITHUB_OUTPUT"
 
           echo "Latest release: $VERSION"
 
       - name: Check if new release
         id: check
+        env:
+          LATEST_VERSION: ${{ steps.fetch.outputs.version }}
+          FORCE_NOTIFY: ${{ inputs.force_notify }}
         run: |
-          LATEST_VERSION="${{ steps.fetch.outputs.version }}"
-
-          if [ -f "${{ env.VERSION_FILE }}" ]; then
-            LAST_VERSION=$(cat "${{ env.VERSION_FILE }}")
-          else
-            LAST_VERSION="none"
-          fi
+          LAST_VERSION=$(cat "$VERSION_FILE" 2>/dev/null || echo "none")
 
           echo "Last known: $LAST_VERSION"
           echo "Latest: $LATEST_VERSION"
 
-          if [ "$LATEST_VERSION" != "$LAST_VERSION" ] || [ "${{ github.event.inputs.force_notify }}" == "true" ]; then
-            echo "new_release=true" >> $GITHUB_OUTPUT
+          if [ "$LATEST_VERSION" != "$LAST_VERSION" ] || [ "$FORCE_NOTIFY" = "true" ]; then
+            echo "new_release=true" >> "$GITHUB_OUTPUT"
             echo "New release detected!"
           else
-            echo "new_release=false" >> $GITHUB_OUTPUT
+            echo "new_release=false" >> "$GITHUB_OUTPUT"
             echo "No new release"
           fi
 
-          echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
-          echo "release_name=${{ steps.fetch.outputs.release_name }}" >> $GITHUB_OUTPUT
-          echo "release_url=${{ steps.fetch.outputs.release_url }}" >> $GITHUB_OUTPUT
-
-          BODY_B64=$(base64 -w 0 /tmp/release_body.txt)
-          echo "release_body=$BODY_B64" >> $GITHUB_OUTPUT
-
       - name: Update last known version
         if: steps.check.outputs.new_release == 'true'
+        env:
+          LATEST_VERSION: ${{ steps.fetch.outputs.version }}
         run: |
-          mkdir -p $(dirname "${{ env.VERSION_FILE }}")
-          echo "${{ steps.check.outputs.version }}" > "${{ env.VERSION_FILE }}"
+          mkdir -p "$(dirname "$VERSION_FILE")"
+          echo "$LATEST_VERSION" > "$VERSION_FILE"
 
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add "${{ env.VERSION_FILE }}"
-          git diff --staged --quiet || git commit -m "chore: update version to ${{ steps.check.outputs.version }}"
-          git push || echo "Nothing to push"
+          git add "$VERSION_FILE"
+          git diff --staged --quiet || git commit -m "chore: update version to $LATEST_VERSION"
+          git push
 
   generate-content:
     needs: check-release
@@ -132,40 +122,52 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           VERSION: ${{ needs.check-release.outputs.version }}
           RELEASE_NAME: ${{ needs.check-release.outputs.release_name }}
-          RELEASE_URL: ${{ needs.check-release.outputs.release_url }}
           RELEASE_BODY_B64: ${{ needs.check-release.outputs.release_body }}
         run: |
-          RELEASE_BODY=$(echo "$RELEASE_BODY_B64" | base64 -d)
+          RELEASE_BODY=$(base64 -d <<<"$RELEASE_BODY_B64")
 
-          PROMPT="You are a developer advocate. Summarize this release:
+          PROMPT=$(cat <<EOF
+          You are a developer advocate. Summarize this release:
           Version: $VERSION
           Name: $RELEASE_NAME
           Notes: $RELEASE_BODY
 
-          Return JSON only:
-          {\"summary\": \"One sentence summary\", \"features\": \"• Feature 1\\n• Feature 2\"}"
+          Return only a JSON object, without markdown fences:
+          {"summary": "One sentence summary", "features": "• Feature 1\n• Feature 2"}
+          EOF
+          )
 
-          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
-            -H "Content-Type: application/json" \
+          REQUEST=$(jq -n --arg model "$CLAUDE_MODEL" --arg prompt "$PROMPT" '{
+            model: $model,
+            max_tokens: 4096,
+            output_config: {effort: "low"},
+            messages: [{role: "user", content: $prompt}]
+          }')
+
+          RESPONSE=$(curl -sS https://api.anthropic.com/v1/messages \
+            -H "content-type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
-            -d "{
-              \"model\": \"${{ env.CLAUDE_MODEL }}\",
-              \"max_tokens\": 1000,
-              \"messages\": [{\"role\": \"user\", \"content\": $(echo "$PROMPT" | jq -Rs .)}]
-            }")
+            -d "$REQUEST")
 
-          CONTENT=$(echo "$RESPONSE" | jq -r '.content[0].text')
-          SUMMARY=$(echo "$CONTENT" | jq -r '.summary')
-          FEATURES=$(echo "$CONTENT" | jq -r '.features')
+          if jq -e '.error' <<<"$RESPONSE" > /dev/null; then
+            echo "API error: $(jq -r '.error.message' <<<"$RESPONSE")"
+            exit 1
+          fi
 
-          echo "summary=$(echo "$SUMMARY" | base64 -w 0)" >> $GITHUB_OUTPUT
-          echo "features=$(echo "$FEATURES" | base64 -w 0)" >> $GITHUB_OUTPUT
+          # Current models can return a thinking block first, so join the text blocks
+          CONTENT=$(jq -r '[.content[] | select(.type == "text") | .text] | join("")' <<<"$RESPONSE" | sed '/^```/d')
+          SUMMARY=$(jq -r '.summary' <<<"$CONTENT")
+          FEATURES=$(jq -r '.features' <<<"$CONTENT")
+
+          {
+            echo "summary=$(printf '%s' "$SUMMARY" | base64 -w 0)"
+            echo "features=$(printf '%s' "$FEATURES" | base64 -w 0)"
+          } >> "$GITHUB_OUTPUT"
 
   notify-discord:
     needs: [check-release, generate-content]
     runs-on: ubuntu-latest
-    if: needs.check-release.outputs.new_release == 'true'
 
     steps:
       - name: Send Discord notification
@@ -181,48 +183,53 @@ jobs:
             exit 0
           fi
 
-          SUMMARY=$(echo "$SUMMARY_B64" | base64 -d)
-          FEATURES=$(echo "$FEATURES_B64" | base64 -d)
-
-          SUMMARY_ESCAPED=$(echo "$SUMMARY" | jq -Rs . | sed 's/^"//;s/"$//')
-          FEATURES_ESCAPED=$(echo "$FEATURES" | jq -Rs . | sed 's/^"//;s/"$//')
-
-          curl -X POST "$DISCORD_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"embeds\": [{
-                \"title\": \"New Release: $VERSION\",
-                \"description\": \"$SUMMARY_ESCAPED\",
-                \"url\": \"$RELEASE_URL\",
-                \"color\": 5763719,
-                \"fields\": [
-                  {\"name\": \"What's New\", \"value\": \"$FEATURES_ESCAPED\"},
-                  {\"name\": \"Links\", \"value\": \"[View Release]($RELEASE_URL)\"}
-                ],
-                \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
-              }]
-            }"
+          # jq builds the payload, so quotes and newlines in the summary are escaped
+          jq -n \
+            --arg version "$VERSION" \
+            --arg url "$RELEASE_URL" \
+            --arg summary "$(base64 -d <<<"$SUMMARY_B64")" \
+            --arg features "$(base64 -d <<<"$FEATURES_B64")" \
+            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{embeds: [{
+              title: "New Release: \($version)",
+              description: $summary,
+              url: $url,
+              color: 5763719,
+              fields: [
+                {name: "Highlights", value: ($features | .[0:1024])},
+                {name: "Links", value: "[View Release](\($url))"}
+              ],
+              timestamp: $timestamp
+            }]}' |
+            curl -sS --fail-with-body -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d @-
 
   create-issue:
     needs: [check-release, generate-content]
     runs-on: ubuntu-latest
-    if: needs.check-release.outputs.new_release == 'true'
     permissions:
       issues: write
 
     steps:
       - name: Create tracking issue
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.check-release.outputs.version }}
           RELEASE_URL: ${{ needs.check-release.outputs.release_url }}
           SUMMARY_B64: ${{ needs.generate-content.outputs.summary }}
         run: |
-          SUMMARY=$(echo "$SUMMARY_B64" | base64 -d)
+          SUMMARY=$(base64 -d <<<"$SUMMARY_B64")
+
+          # gh issue create fails on unknown labels, so make sure this one exists
+          gh label create release-tracking --color 0E8A16 --description "New upstream release" --force
 
           gh issue create \
             --title "New release: $VERSION" \
-            --body "## Summary
+            --label "release-tracking" \
+            --body "$(cat <<EOF
+          ## Summary
           $SUMMARY
 
           ## Links
@@ -231,5 +238,6 @@ jobs:
           ## Tasks
           - [ ] Review changes
           - [ ] Update dependencies
-          - [ ] Test compatibility" \
-            --label "release-tracking"
+          - [ ] Test compatibility
+          EOF
+          )"

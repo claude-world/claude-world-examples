@@ -9,6 +9,8 @@
 │                    CLAUDE.md CHECKLIST                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
+│  Start with /init; edit with /memory or ask Claude              │
+│                                                                 │
 │  □ TECH STACK                                                   │
 │    ├── Framework + version                                      │
 │    ├── Database + ORM                                           │
@@ -31,10 +33,10 @@
 │    ├── Linter config                                            │
 │    └── Formatting (Prettier?)                                   │
 │                                                                 │
-│  □ PERMISSIONS                                                  │
-│    ├── Can do freely: _______________                           │
-│    ├── Needs mention: _______________                           │
-│    └── Prohibited: _______________                              │
+│  □ BOUNDARIES (enforced in .claude/settings.json, not here)     │
+│    ├── allow (no prompt): _______________                       │
+│    ├── ask (always confirm): _______________                    │
+│    └── deny (never): _______________                            │
 │                                                                 │
 │  □ PATTERNS                                                     │
 │    ├── API response format                                      │
@@ -43,7 +45,9 @@
 │                                                                 │
 │  □ HEALTH CHECK                                                 │
 │    ├── Last updated: _______________                            │
-│    └── Under 500 lines? □ Yes □ No                              │
+│    ├── Under ~200 lines? □ Yes □ No                             │
+│    ├── Procedures → skills; path-specific → .claude/rules/      │
+│    └── Audit: /doctor prompt-audit; loaded? /context            │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -93,6 +97,13 @@
 │  │ ✗ Watching every step   → Review at completion          │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │ TOOLING (community plugin, not built in):               │    │
+│  │ /plugin marketplace add claude-world/director-mode-lite │    │
+│  │ /plugin install director-mode-lite@director-mode-lite   │    │
+│  │ → adds /workflow, /focus-problem, /smart-commit         │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -107,9 +118,9 @@
 │                                                                 │
 │  WHEN TO USE PARALLEL AGENTS:                                   │
 │  ┌────────────────────────────────────────────────────────┐     │
-│  │ ✓ Exploring codebase    │ ✓ Bug investigation         │     │
-│  │ ✓ Code review           │ ✓ Feature research          │     │
-│  │ ✓ Multiple file search  │ ✓ Architecture analysis     │     │
+│  │ ✓ Exploring codebase    │ ✓ Bug investigation          │     │
+│  │ ✓ Code review           │ ✓ Feature research           │     │
+│  │ ✓ Multiple file search  │ ✓ Architecture analysis      │     │
 │  └────────────────────────────────────────────────────────┘     │
 │                                                                 │
 │  WHEN NOT TO USE:                                               │
@@ -119,13 +130,15 @@
 │  │ ✗ Simple lookups                                       │     │
 │  └────────────────────────────────────────────────────────┘     │
 │                                                                 │
-│  AGENT TYPES:                                                   │
-│  ┌──────────────┬───────────────────────────────────────┐       │
-│  │ Explore      │ Codebase structure, find files        │       │
-│  │ Grep         │ Search for patterns/text              │       │
-│  │ Read         │ Examine specific files                │       │
-│  │ Bash         │ Run commands, check git               │       │
-│  └──────────────┴───────────────────────────────────────┘       │
+│  SUBAGENT TYPES (Agent tool, formerly Task):                    │
+│  ┌─────────────────┬────────────────────────────────────┐       │
+│  │ Explore         │ Read-only search (main model);     │       │
+│  │                 │ quick / medium / very thorough     │       │
+│  │ Plan            │ Research during plan mode          │       │
+│  │ general-purpose │ Multi-step work, all tools         │       │
+│  │ Your own        │ .claude/agents/<name>.md           │       │
+│  └─────────────────┴────────────────────────────────────┘       │
+│  (Grep, Read and Bash are tools these agents use)               │
 │                                                                 │
 │  EFFICIENCY MATH:                                               │
 │  ┌────────────────────────────────────────────────────────┐     │
@@ -145,9 +158,12 @@
 │  │  Agent 4: Check recent auth commits                    │     │
 │  │  Agent 5: Search for error handling                    │     │
 │  │                                                        │     │
-│  │  → All complete in ~5 seconds                          │     │
+│  │  → Run concurrently, each in its own context           │     │
 │  │  → Results synthesized automatically                   │     │
 │  └────────────────────────────────────────────────────────┘     │
+│                                                                 │
+│  CONTROLS: Ctrl+B backgrounds work; /tasks lists it;            │
+│            Esc interrupts                                       │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -191,6 +207,7 @@
 │  │  Claude: "Found issue in /lib/auth.ts:42..."           │     │
 │  │  You: "Fix it"                                         │     │
 │  │  Claude: [implements fix + tests + commit]             │     │
+│  │  Wrong turn? Esc Esc or /rewind restores a checkpoint  │     │
 │  └────────────────────────────────────────────────────────┘     │
 │                                                                 │
 │  TYPICAL TIME: 2-5 minutes                                      │
@@ -226,7 +243,7 @@
 │  │  → Test patterns                                       │     │
 │  └────────────────────────────────────────────────────────┘     │
 │                                                                 │
-│  STEP 3: REVIEW PLAN                                            │
+│  STEP 3: REVIEW PLAN (plan mode: Shift+Tab or /plan)            │
 │  ┌────────────────────────────────────────────────────────┐     │
 │  │  Claude proposes:                                      │     │
 │  │  - Database changes                                    │     │
@@ -235,6 +252,7 @@
 │  │  - Tests                                               │     │
 │  │                                                        │     │
 │  │  You: "Proceed" or "Adjust X"                          │     │
+│  │  Ctrl+G opens the plan in your editor                  │     │
 │  └────────────────────────────────────────────────────────┘     │
 │                                                                 │
 │  STEP 4: IMPLEMENT & REVIEW                                     │
@@ -246,8 +264,8 @@
 │  │  → Ready for your review                               │     │
 │  └────────────────────────────────────────────────────────┘     │
 │                                                                 │
-│  ✗ DON'T: Implement incrementally (button → handler → API)     │
-│  ✓ DO: Implement completely in one go                          │
+│  ✗ DON'T: Implement incrementally (button → handler → API)      │
+│  ✓ DO: Implement completely in one go                           │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -285,7 +303,67 @@
 │  │  "matching the project style"                          │     │
 │  │  "including error handling"                            │     │
 │  │  "using parallel agents"                               │     │
+│  │  "ultrathink" (deeper reasoning for one turn)          │     │
 │  └────────────────────────────────────────────────────────┘     │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Claude Code Essentials
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│               CLAUDE CODE ESSENTIALS (2.1.x)                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  BUILT-IN COMMANDS:                                             │
+│  ┌────────────────────────────────────────────────────────┐     │
+│  │  /init     starter CLAUDE.md  │ /memory   memory files │     │
+│  │  /model    switch model       │ /effort   depth        │     │
+│  │  /plan     plan mode          │ /rewind   checkpoints  │     │
+│  │  /context  context usage      │ /compact  summarize    │     │
+│  │  /clear    fresh context      │ /resume   past session │     │
+│  │  /review   review diff or PR  │ /tasks    background   │     │
+│  │  /permissions  allow/ask/deny │ /hooks    view hooks   │     │
+│  │  /mcp      MCP servers        │ /plugin   plugins      │     │
+│  │  /skills   list skills        │ /usage    cost, limits │     │
+│  └────────────────────────────────────────────────────────┘     │
+│                                                                 │
+│  SHORTCUTS:                                                     │
+│  ┌────────────────────────────────────────────────────────┐     │
+│  │  Shift+Tab  cycle permission modes (incl. plan, auto)  │     │
+│  │  Esc        interrupt     │ Esc Esc   rewind menu      │     │
+│  │  Ctrl+B     background    │ Ctrl+O    transcript       │     │
+│  │  Ctrl+R     history search│ Ctrl+G    external editor  │     │
+│  │  Option+P / Alt+P  switch model;  ! shell;  @ file     │     │
+│  └────────────────────────────────────────────────────────┘     │
+│                                                                 │
+│  FILES:                                                         │
+│  ┌────────────────────────────────────────────────────────┐     │
+│  │  CLAUDE.md or .claude/CLAUDE.md project, shared        │     │
+│  │  CLAUDE.local.md                personal, gitignore it │     │
+│  │  ~/.claude/CLAUDE.md            all your projects      │     │
+│  │  .claude/rules/*.md             modular, path rules    │     │
+│  │  .claude/settings.json          permissions, hooks, env│     │
+│  │  .claude/settings.local.json    personal overrides     │     │
+│  │  ~/.claude/settings.json        user settings          │     │
+│  │  .claude/skills/<name>/SKILL.md skills → /<name>       │     │
+│  │  .claude/agents/<name>.md       subagents              │     │
+│  │  .mcp.json                      project MCP servers    │     │
+│  └────────────────────────────────────────────────────────┘     │
+│                                                                 │
+│  MCP SCOPES (claude mcp add --scope ...):                       │
+│    local (default) → ~/.claude.json, this project, private      │
+│    project         → .mcp.json, shared via git                  │
+│    user            → ~/.claude.json, all your projects          │
+│                                                                 │
+│  HOOKS ("hooks" key in settings.json; view with /hooks):        │
+│    PreToolUse (exit 2 = block), PostToolUse, Stop,              │
+│    UserPromptSubmit, SessionStart; input = JSON on stdin        │
+│                                                                 │
+│  THINKING: "ultrathink" in one prompt; /effort low to max       │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```

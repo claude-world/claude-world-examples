@@ -24,15 +24,17 @@ refresh while user is active."
 
 ### 2. Let Claude Launch Parallel Investigation
 
-Claude will automatically launch multiple agents:
+Claude delegates codebase searches to subagents on its own, and you can ask for it explicitly: "use subagents to investigate this in parallel." Each subagent explores in its own context window and reports back a summary:
 
 ```
 Agent 1 (Explore): Map the authentication flow
-Agent 2 (Grep): Search for session/timeout/expiry code
-Agent 3 (Grep): Check token refresh logic
-Agent 4 (Read): Examine auth middleware
-Agent 5 (Bash): Check recent commits to auth files
+Agent 2 (Explore): Search for session/timeout/expiry code
+Agent 3 (Explore): Check token refresh logic
+Agent 4 (Explore): Examine auth middleware
+Agent 5 (general-purpose): Check recent commits to auth files
 ```
+
+The label is the subagent type. Grep, Read and Bash are tools those subagents use, not agent types. Subagents run in the background while you keep working; `/tasks` shows them. To keep Claude from editing anything until you approve a fix, run this step in plan mode (`Shift+Tab` or `/plan`).
 
 ### 3. Review Findings
 
@@ -62,6 +64,8 @@ Claude: [Implements the fix]
 - Adds tests for the new behavior
 - Commits with descriptive message
 ```
+
+If a fix doesn't hold up, press `Esc` twice or run `/rewind` to restore the code from before the change and try another approach.
 
 ## Example Scenarios
 
@@ -136,7 +140,7 @@ Actual: "Server error" message
 
 ```
 Bug: API returns 500 error
-Error: "TypeError: Cannot read property 'id' of undefined"
+Error: "TypeError: Cannot read properties of undefined (reading 'id')"
 Endpoint: POST /api/projects
 ```
 
@@ -181,7 +185,7 @@ Claude's parallel agents typically check:
 3. **Review synthesis** - Claude combines all findings
 4. **Approve fix** - One command to implement
 
-Average bug fix time with this pattern: **2-5 minutes**
+For a well-described bug, this pattern often gets you to a tested fix in **minutes rather than hours**.
 
 ---
 

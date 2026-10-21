@@ -89,7 +89,7 @@ This guide provides a framework for Claude-assisted production review.
 │    ├── [ ] Bundle size optimized (code splitting)             │
 │    ├── [ ] Images optimized (WebP, lazy loading)              │
 │    ├── [ ] Critical CSS inlined                                │
-│    ├── [ ] Core Web Vitals passing (LCP, FID, CLS)            │
+│    ├── [ ] Core Web Vitals passing (LCP, INP, CLS)            │
 │    └── [ ] CDN configured for static assets                    │
 │                                                                │
 │  □ LOAD HANDLING                                               │
@@ -275,6 +275,8 @@ This guide provides a framework for Claude-assisted production review.
 "Perform a security review of this codebase focusing on OWASP Top 10"
 ```
 
+That prompt audits the whole codebase; add `ultrathink` to it for a deeper pass. To check only what changed on your release branch, run the built-in `/security-review` command, which reviews the diff against `origin`'s default branch for risks like injection, auth flaws and data exposure.
+
 ### Step 2: Performance Analysis
 
 ```
@@ -295,6 +297,8 @@ This guide provides a framework for Claude-assisted production review.
 - Recovery mechanisms"
 ```
 
+Before merging the launch branch, run `/code-review` (alias `/review`) to check the diff for correctness bugs in a fresh subagent. Pass a level such as `/code-review high` for a more thorough pass, or `--comment` to post the findings on the PR.
+
 ### Step 4: Generate Report
 
 ```
@@ -308,16 +312,17 @@ This guide provides a framework for Claude-assisted production review.
 ## Example Production Review Session
 
 ```
-You: "Run production readiness check before we launch next week"
+You: "Run a production readiness check before we launch next week.
+     Use parallel subagents, one per checklist area."
 
-Claude: [Launches parallel agents]
+Claude: [Spawns 5 subagents in the background; /tasks shows them]
 → Agent 1: Security scan
 → Agent 2: Performance analysis
 → Agent 3: Error handling review
 → Agent 4: Test coverage check
 → Agent 5: Documentation audit
 
-[2 minutes later]
+[A few minutes later]
 
 Claude: "Production Readiness Report:
 
@@ -383,8 +388,30 @@ Use this checklist with Claude to systematically review:
 
 **Command to run full review**:
 ```
-"Perform a complete production readiness review using the standard checklist"
+/production-readiness
 ```
+
+Claude only knows "the standard checklist" if you give it one, so save the checklists on this page as a project skill and run it before every launch:
+
+```
+.claude/skills/production-readiness/
+├── SKILL.md
+└── checklist.md    # the six checklists from this page
+```
+
+```markdown
+---
+name: production-readiness
+description: Production readiness review before a launch. Checks security, performance, reliability, observability, testing and documentation against a checklist.
+disable-model-invocation: true
+---
+
+Review this codebase against every section of ${CLAUDE_SKILL_DIR}/checklist.md.
+Use one subagent per section, then write a report grouped as Critical (block launch),
+High priority, Medium and Good, with file:line evidence for each finding.
+```
+
+`disable-model-invocation: true` keeps the review manual: it runs when you type `/production-readiness`, not whenever Claude decides the code looks ready.
 
 ---
 

@@ -218,12 +218,16 @@ Return ONLY valid JSON in this exact format:
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
+      // Short social copy: Haiku is fast and inexpensive
+      model: 'claude-haiku-5-5',
+      // Thinking counts toward max_tokens, so leave headroom
+      max_tokens: 4096,
+      output_config: { effort: 'low' },
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const text = response.content[0].text;
+    // Current models can return a thinking block first; read the text block
+    const text = response.content.find((block) => block.type === 'text')?.text ?? '';
     const jsonMatch = text.match(/\{[\s\S]*\}/);
 
     if (!jsonMatch) {
@@ -820,18 +824,21 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
 jobs:
   post-to-social:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -847,15 +854,20 @@ jobs:
           # Threads credentials
           THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          # Inputs go through env so their text is never run as shell code
+          ARTICLE: ${{ inputs.article }}
+          LANG_CODE: ${{ inputs.lang }}
+          PLATFORMS: ${{ inputs.platforms }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           node scripts/post-to-social.js \
-            --article="${{ inputs.article }}" \
-            --lang="${{ inputs.lang }}" \
-            --platforms="${{ inputs.platforms }}" \
-            --dry-run="${{ inputs.dry_run }}"
+            --article="$ARTICLE" \
+            --lang="$LANG_CODE" \
+            --platforms="$PLATFORMS" \
+            --dry-run="$DRY_RUN"
 
       - name: Upload posting logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: social-posting-logs
@@ -896,6 +908,9 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
 jobs:
   generate-posts:
     runs-on: ubuntu-latest
@@ -907,8 +922,8 @@ jobs:
         id: generate
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          CONTENT: ${{ github.event.inputs.content }}
-          LANGUAGE: ${{ github.event.inputs.language }}
+          CONTENT: ${{ inputs.content }}
+          LANGUAGE: ${{ inputs.language }}
         run: |
           cat > /tmp/generate.js << 'EOF'
           const https = require('https');
@@ -916,8 +931,9 @@ jobs:
           async function callClaude(prompt) {
             return new Promise((resolve, reject) => {
               const body = JSON.stringify({
-                model: 'claude-sonnet-4-20250514',
-                max_tokens: 1000,
+                model: 'claude-haiku-5-5',
+                max_tokens: 4096,
+                output_config: { effort: 'low' },
                 messages: [{ role: 'user', content: prompt }]
               });
 
@@ -934,9 +950,13 @@ jobs:
                 let data = '';
                 res.on('data', chunk => data += chunk);
                 res.on('end', () => {
-                  const response = JSON.parse(data);
-                  if (response.error) reject(new Error(response.error.message));
-                  else resolve(response.content[0].text);
+                  try {
+                    const response = JSON.parse(data);
+                    if (response.error) return reject(new Error(response.error.message));
+                    // Current models can return a thinking block first; read the text block
+                    const text = response.content.find(block => block.type === 'text');
+                    resolve(text ? text.text : '');
+                  } catch (e) { reject(e); }
                 });
               });
               req.on('error', reject);
@@ -983,12 +1003,12 @@ jobs:
           echo "Generated posts:"
           cat /tmp/posts.json
 
-          echo "posts_json=$(cat /tmp/posts.json | base64 -w 0)" >> $GITHUB_OUTPUT
+          echo "posts_json=$(base64 -w 0 /tmp/posts.json)" >> "$GITHUB_OUTPUT"
 
   post-to-x:
     needs: generate-posts
     runs-on: ubuntu-latest
-    if: contains(github.event.inputs.platforms, 'x')
+    if: contains(inputs.platforms, 'x')
 
     steps:
       - name: Post to X
@@ -998,15 +1018,14 @@ jobs:
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
           POSTS_B64: ${{ needs.generate-posts.outputs.posts_json }}
-          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           if [ -z "$X_API_KEY" ]; then
             echo "X API not configured, skipping"
             exit 0
           fi
 
-          POSTS=$(echo "$POSTS_B64" | base64 -d)
-          TWEET=$(echo "$POSTS" | jq -r '.x')
+          TWEET=$(base64 -d <<<"$POSTS_B64" | jq -r '.x')
 
           echo "Tweet: $TWEET"
 
@@ -1044,7 +1063,7 @@ jobs:
   post-to-threads:
     needs: generate-posts
     runs-on: ubuntu-latest
-    if: contains(github.event.inputs.platforms, 'threads')
+    if: contains(inputs.platforms, 'threads')
 
     steps:
       - name: Post to Threads
@@ -1052,15 +1071,14 @@ jobs:
           THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
           POSTS_B64: ${{ needs.generate-posts.outputs.posts_json }}
-          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           if [ -z "$THREADS_ACCESS_TOKEN" ]; then
             echo "Threads API not configured, skipping"
             exit 0
           fi
 
-          POSTS=$(echo "$POSTS_B64" | base64 -d)
-          TEXT=$(echo "$POSTS" | jq -r '.threads')
+          TEXT=$(base64 -d <<<"$POSTS_B64" | jq -r '.threads')
 
           echo "Threads post: $TEXT"
 
@@ -1069,16 +1087,17 @@ jobs:
             exit 0
           fi
 
-          # URL encode the text
-          ENCODED_TEXT=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$TEXT'''))")
+          # Create container. --data-urlencode puts the text and token in the POST
+          # body, so the generated text is never parsed as code and the token stays
+          # out of URLs and logs.
+          CONTAINER=$(curl -sS -X POST "https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads" \
+            --data-urlencode "media_type=TEXT" \
+            --data-urlencode "text=$TEXT" \
+            --data-urlencode "access_token=$THREADS_ACCESS_TOKEN")
 
-          # Create container
-          CONTAINER=$(curl -s -X POST \
-            "https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads?media_type=TEXT&text=${ENCODED_TEXT}&access_token=${THREADS_ACCESS_TOKEN}")
+          CONTAINER_ID=$(jq -r '.id // empty' <<<"$CONTAINER")
 
-          CONTAINER_ID=$(echo "$CONTAINER" | jq -r '.id')
-
-          if [ "$CONTAINER_ID" == "null" ]; then
+          if [ -z "$CONTAINER_ID" ]; then
             echo "Failed to create container: $CONTAINER"
             exit 1
           fi
@@ -1087,8 +1106,9 @@ jobs:
           sleep 2
 
           # Publish
-          RESULT=$(curl -s -X POST \
-            "https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads_publish?creation_id=${CONTAINER_ID}&access_token=${THREADS_ACCESS_TOKEN}")
+          RESULT=$(curl -sS -X POST "https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads_publish" \
+            --data-urlencode "creation_id=$CONTAINER_ID" \
+            --data-urlencode "access_token=$THREADS_ACCESS_TOKEN")
 
           echo "Published: $RESULT"
 ```
@@ -1288,7 +1308,7 @@ gh run view <run-id> --log
 
 - [X API v2 Documentation](https://developer.twitter.com/en/docs/twitter-api)
 - [Threads API Documentation](https://developers.facebook.com/docs/threads)
-- [Claude API Documentation](https://docs.anthropic.com/en/api)
+- [Claude API Documentation](https://platform.claude.com/docs)
 - [GitHub Actions Automation](./github-actions-automation.md)
 
 ---

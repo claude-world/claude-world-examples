@@ -16,7 +16,9 @@
 
 ## What Are Claude Code Skills?
 
-Skills are **slash commands** (`/command-name`) that expand into prompts. When you type `/workflow` in Claude Code, the content of `workflow.md` becomes your prompt, giving Claude detailed instructions on how to proceed.
+Skills are reusable instructions packaged as a folder with a `SKILL.md` file. You run one as a **slash command** (`/skill-name`), and Claude can also load it on its own when its description matches what you're doing. When you type `/workflow` in Claude Code, the content of `.claude/skills/workflow/SKILL.md` becomes part of your prompt, giving Claude detailed instructions on how to proceed.
+
+> **Custom commands have been merged into skills.** A file at `.claude/commands/deploy.md` still works and creates `/deploy`, but prefer `.claude/skills/deploy/SKILL.md` for new work: skills add supporting files, invocation control, and automatic loading.
 
 Think of skills as **reusable workflow templates**:
 
@@ -28,9 +30,10 @@ Result:       Structured test-driven development process
 
 ### Key Characteristics
 
-- **User-facing**: Skills appear in the `/` autocomplete menu
-- **Prompt expansion**: The skill file content becomes your prompt
-- **Argument passing**: Use `$ARGUMENTS` to capture user input
+- **User-facing**: Skills appear in the `/` autocomplete menu (`/skills` lists them all)
+- **Model-invocable**: Claude loads a skill automatically when its description matches the task, unless you turn that off
+- **Prompt expansion**: Only the description sits in context until the skill runs; then its full content enters the conversation
+- **Argument passing**: Use `$ARGUMENTS`, `$0`/`$1`, or named arguments to capture user input
 - **Declarative**: Define the "what", let Claude figure out the "how"
 
 ---
@@ -41,11 +44,11 @@ Understanding when to use each:
 
 | Aspect | Skills | Agents | Hooks |
 |--------|--------|--------|-------|
-| **Invocation** | `/command args` | Task tool or mention | Automatic triggers |
-| **User-facing** | Yes (in `/` menu) | No (internal use) | No (background) |
-| **Use case** | User workflows | Subtask delegation | Event reactions |
-| **Location** | `.claude/commands/` | `.claude/agents/` | `.claude/settings.json` |
-| **Example** | `/smart-commit` | `code-reviewer` agent | Pre-commit validation |
+| **Invocation** | `/skill-name args`, or Claude loads it when the description matches | Claude delegates via the Agent tool, or you name or @-mention the agent | Automatic on lifecycle events |
+| **User-facing** | Yes (in `/` menu) | Indirectly (you ask for one; it shows in `/tasks`) | No (background) |
+| **Use case** | User workflows, reference knowledge | Subtask delegation in an isolated context | Event reactions, enforcement |
+| **Location** | `.claude/skills/<name>/SKILL.md` | `.claude/agents/<name>.md` | `hooks` in `.claude/settings.json` |
+| **Example** | `/smart-commit` | `code-reviewer` agent (custom) | Pre-commit validation |
 
 ### When to Use Each
 
@@ -53,16 +56,17 @@ Understanding when to use each:
 - You want a reusable workflow users invoke directly
 - The process has clear steps to follow
 - You need consistent execution of common tasks
+- Claude needs reference knowledge only some of the time
 
 **Use Agents when:**
 - You need specialized expertise for subtasks
 - You want to delegate work within a skill
-- You need parallel processing capabilities
+- You need parallel processing or context isolation
 
 **Use Hooks when:**
 - You want automatic reactions to events
 - Pre/post processing is needed for certain actions
-- You need validation before commits or file saves
+- A rule must hold every time (validation before commits or file edits)
 
 ### How They Work Together
 
@@ -94,25 +98,38 @@ User invokes: /workflow "add user login"
 
 ### File Location
 
-Skills live in `.claude/commands/`:
+Skills live in `.claude/skills/`, one folder per skill:
 
 ```
 project-root/
 └── .claude/
-    └── commands/
-        ├── workflow.md
-        ├── test-first.md
-        ├── smart-commit.md
-        └── deploy-staging.md
+    └── skills/
+        ├── workflow/
+        │   └── SKILL.md
+        ├── test-first/
+        │   └── SKILL.md
+        ├── smart-commit/
+        │   └── SKILL.md
+        └── deploy-staging/
+            ├── SKILL.md
+            └── scripts/
+                └── smoke-test.sh
 ```
+
+| Location | Path | Available in |
+|----------|------|--------------|
+| Personal | `~/.claude/skills/<name>/SKILL.md` | All your projects |
+| Project | `.claude/skills/<name>/SKILL.md` | This repository (commit it to share) |
+| Plugin | `<plugin>/skills/<name>/SKILL.md` | Wherever the plugin is enabled, as `/plugin-name:skill-name` |
+| Legacy command | `.claude/commands/<name>.md` | Still works; same frontmatter except `name` and `paths` |
 
 ### Basic Structure
 
-Every skill file has two parts: **frontmatter** and **content**.
+Every `SKILL.md` has two parts: **frontmatter** and **content**.
 
 ```markdown
 ---
-description: Brief description shown in / menu
+description: What this skill does and when to use it (Claude reads this to decide when to load it)
 ---
 
 # Skill Name
@@ -128,34 +145,54 @@ description: Brief description shown in / menu
 
 ### Frontmatter Options
 
+All fields are optional; `description` is the one to always write. A realistic combination:
+
 ```yaml
 ---
-# Required
-description: What this skill does (shown in / menu)
+# Recommended
+description: Deploy the current branch to staging. Use when the user asks to deploy or ship to staging.
 
 # Optional
-user-invocable: true           # Show in / menu (default: true)
-allowed-tools: [Read, Write]   # Restrict available tools
-context: fork                  # Isolated context
-agent: my-agent                # Run as specific agent
+name: deploy-staging            # Command name (defaults to the folder name)
+argument-hint: "[service]"      # Shown during autocomplete
+disable-model-invocation: true  # Only you can trigger it (it has side effects)
+allowed-tools: Bash(npm run *) Bash(git status *)  # Pre-approved while it runs
+effort: high                    # Effort level while the skill is active
+context: fork                   # Run in an isolated subagent
+agent: general-purpose          # Which agent runs it
 ---
 ```
 
 | Field | Type | Default | Purpose |
 |-------|------|---------|---------|
-| `description` | string | required | Shown in `/` autocomplete |
-| `user-invocable` | boolean | true | Whether to show in menu |
-| `allowed-tools` | array | all | Restrict tool access |
-| `context` | string | - | "fork" for isolated execution |
-| `agent` | string | - | Run as specified agent |
+| `name` | string | folder name | Command name in the `/` menu |
+| `description` | string | first line of content | What it does and when to use it; Claude matches on this, so put the key use case first |
+| `when_to_use` | string | - | Extra trigger phrases, appended to the description |
+| `argument-hint` | string | - | Autocomplete hint such as `[issue-number]` |
+| `arguments` | list | - | Names for positional arguments (`$name` substitution) |
+| `disable-model-invocation` | boolean | false | Only you can invoke it; Claude won't load it automatically |
+| `user-invocable` | boolean | true | `false` hides it from the `/` menu (Claude-only background knowledge) |
+| `allowed-tools` | string/list | - | Tools Claude may use **without asking** during the turn that invokes it; does not restrict other tools |
+| `disallowed-tools` | string/list | - | Tools removed while the skill is active |
+| `model` | string | session model | Model while the skill is active |
+| `effort` | string | session level | `low`, `medium`, `high`, `xhigh`, or `max` while the skill is active |
+| `context` | string | - | `fork` runs the skill in a subagent |
+| `agent` | string | `general-purpose` | Agent that runs a `context: fork` skill |
+| `background` | boolean | true | With `context: fork`, `false` waits for the result |
+| `hooks` | object | - | Hooks registered when the skill is invoked |
+| `paths` | string/list | - | Globs; Claude auto-loads the skill only when working on matching files |
+| `shell` | string | `bash` | Shell for `` !`command` `` injection (`bash` or `powershell`) |
+
+`metadata`, `license`, and `compatibility` come from the open Agent Skills spec; Claude Code accepts them but doesn't act on them.
 
 ### Handling Arguments
 
-Use `$ARGUMENTS` to capture user input:
+Use `$ARGUMENTS` to capture everything typed after the command:
 
 ```markdown
 ---
 description: Search codebase for pattern
+argument-hint: "[pattern]"
 ---
 
 # Code Search
@@ -167,10 +204,25 @@ If no arguments provided, ask what to search for.
 
 **Usage examples:**
 ```
-/search loginHandler           → $ARGUMENTS = "loginHandler"
-/search "user authentication"  → $ARGUMENTS = "user authentication"
-/search                        → $ARGUMENTS = ""
+/search loginHandler           → $ARGUMENTS = loginHandler
+/search "user authentication"  → $ARGUMENTS = "user authentication" (as typed), $0 = user authentication
+/search                        → $ARGUMENTS is empty
 ```
+
+For individual arguments, use `$0`, `$1` (or `$ARGUMENTS[0]`), or give them names with `arguments`:
+
+```markdown
+---
+description: Migrate a component from one language to another
+arguments: [component, from, to]
+argument-hint: "[component] [from] [to]"
+---
+
+Migrate the $component component from $from to $to.
+Preserve all existing behavior and tests.
+```
+
+`/migrate-component SearchBar JavaScript TypeScript` fills `$component`, `$from`, and `$to` in order (the same values as `$0`, `$1`, and `$2`). If no placeholder receives the arguments, Claude Code appends them as `ARGUMENTS: <value>`.
 
 ---
 
@@ -198,11 +250,11 @@ Write out the manual steps:
 
 ### Step 3: Create the Skill File
 
-Transform steps into a structured skill:
+Transform steps into a structured skill at `.claude/skills/workflow/SKILL.md`:
 
 ```markdown
 ---
-description: Complete 5-step development workflow
+description: Complete 5-step development workflow. Use when starting a new feature or fix.
 ---
 
 # Development Workflow
@@ -251,6 +303,7 @@ Run the skill several times:
 1. Does it work for different inputs?
 2. Are the steps clear enough?
 3. Is anything missing?
+4. Does Claude load it on its own for requests that match the description?
 
 ---
 
@@ -375,11 +428,12 @@ If issues found, offer to fix:
 
 ### Pattern 4: Runner Skill
 
-For executing command sequences.
+For executing command sequences. Deployments have side effects, so keep Claude from starting them on its own:
 
-```markdown
+````markdown
 ---
 description: Deploy to staging environment
+disable-model-invocation: true
 ---
 
 # Deploy Staging
@@ -417,15 +471,17 @@ If deployment fails:
 1. Show error output
 2. Check common issues
 3. Suggest rollback if needed
-```
+````
 
 ### Pattern 5: Utility Skill
 
 For single-purpose actions.
 
-```markdown
+````markdown
 ---
 description: Create conventional commit with quality checks
+disable-model-invocation: true
+allowed-tools: Bash(git diff *) Bash(git add *) Bash(git commit *) Bash(git status *)
 ---
 
 # Smart Commit
@@ -465,7 +521,7 @@ Create a high-quality commit for current changes.
 2. Determine appropriate type and scope
 3. Write clear description (50 chars or less)
 4. Execute commit
-```
+````
 
 ---
 
@@ -473,27 +529,29 @@ Create a high-quality commit for current changes.
 
 ### Context Fork (Isolated Execution)
 
-Run skills in isolated context to prevent side effects:
+`context: fork` runs the skill in its own subagent, so the work stays out of your main context. The subagent receives the skill content as its prompt but **not** your conversation history, so the instructions must stand on their own. It runs in the background by default (`background: false` waits for the result). File edits still land in your working tree; they're made outside your conversation's checkpoints, so use git to undo them.
 
-```yaml
+```markdown
 ---
-description: Experimental feature exploration
+description: Research how a feature works and report back
 context: fork
+agent: Explore
 ---
 
 # Explore Feature
 
-Try out a feature implementation without affecting main context.
-Changes made here won't persist unless explicitly saved.
+Research $ARGUMENTS thoroughly: find the relevant files, read them,
+and summarize how the feature works with specific file references.
 ```
 
 ### Agent Mode
 
-Run skill as a specific agent:
+`agent` picks which agent runs a `context: fork` skill (it has no effect without `context: fork`). The agent supplies the system prompt, tools, and model; the skill supplies the task:
 
-```yaml
+```markdown
 ---
 description: Security audit with specialized expertise
+context: fork
 agent: security-auditor
 ---
 
@@ -502,21 +560,85 @@ agent: security-auditor
 Perform comprehensive security review of: $ARGUMENTS
 ```
 
-### Tool Restrictions
+`agent` accepts a built-in agent (`Explore`, `Plan`, `general-purpose`) or a custom agent. `security-auditor` here must exist in `.claude/agents/` (see [Designing Agents](./designing-agents.md)); without `agent`, the skill runs on `general-purpose`.
 
-Limit available tools for safety:
+### Tool Permissions and Restrictions
 
-```yaml
+`allowed-tools` **pre-approves** tools for the turn that invokes the skill; it doesn't limit anything. To take tools away while a skill is active, use `disallowed-tools`:
+
+```markdown
 ---
 description: Read-only codebase analysis
-allowed-tools: [Read, Grep, Glob]
+disallowed-tools: Edit Write NotebookEdit Bash
 ---
 
 # Code Analysis
 
 Analyze the codebase without making changes.
-This skill cannot modify any files.
+Edit, Write, and Bash are unavailable while this skill runs.
 ```
+
+And a skill that runs git without a prompt for each command:
+
+```markdown
+---
+description: Stage and commit the current changes
+disable-model-invocation: true
+allowed-tools: Bash(git add *) Bash(git commit *) Bash(git status *)
+---
+```
+
+Both grants clear when you send your next message. For rules that must hold for the whole session, use permission settings or hooks.
+
+### Dynamic Context Injection
+
+A line of the form `` !`command` `` runs before Claude sees the skill, and the command's output replaces it:
+
+```markdown
+---
+description: Summarize uncommitted changes and flag anything risky. Use when the user asks what changed.
+---
+
+## Current changes
+
+!`git diff HEAD`
+
+## Instructions
+
+Summarize the changes above in two or three bullet points, then list any
+risks such as missing error handling or tests that need updating.
+```
+
+A failing command aborts the whole invocation, so append `|| true` to commands that may exit non-zero. For multi-line commands, use a fenced block opened with ` ```! `.
+
+### Supporting Files
+
+Keep `SKILL.md` focused (under about 500 lines) and put detail in files next to it. Claude reads them only when needed:
+
+```
+deploy-staging/
+├── SKILL.md          (required - overview and navigation)
+├── reference.md      (detailed docs - loaded when needed)
+└── scripts/
+    └── smoke-test.sh (executed, not loaded)
+```
+
+Reference each file from `SKILL.md` so Claude knows when to open it, and use `${CLAUDE_SKILL_DIR}` to point at bundled scripts regardless of the current directory, for example `` Run `${CLAUDE_SKILL_DIR}/scripts/smoke-test.sh` ``.
+
+### Packaging Skills in a Plugin
+
+To share skills across repositories, put them in a plugin's `skills/` folder. Plugin skills are namespaced by the plugin name:
+
+```
+my-plugin/
+├── .claude-plugin/
+│   └── plugin.json
+└── skills/
+    └── review/
+        └── SKILL.md      → /my-plugin:review
+```
+
+Test locally with `claude --plugin-dir ./my-plugin`, then publish through a marketplace so others can install it with `/plugin`.
 
 ---
 
@@ -531,9 +653,11 @@ Bad:  /ds, /gc, /rt
 
 ### 2. Helpful Descriptions
 
+Claude decides when to load a skill from its description, so lead with what it does and when to use it:
+
 ```markdown
 # Good
-description: Run tests and automatically fix failures
+description: Run tests and automatically fix failures. Use when tests fail or the user asks to fix the test suite.
 
 # Bad
 description: test stuff
@@ -583,7 +707,7 @@ Checklists help ensure completeness:
 
 Show what success looks like:
 
-```markdown
+````markdown
 ## Expected Output
 
 When complete, show:
@@ -599,11 +723,11 @@ When complete, show:
 2. Run smoke tests
 3. Notify team
 ```
-```
+````
 
 ### 7. Reference Other Skills/Agents
 
-Build on existing capabilities:
+Build on existing capabilities (they must exist in your setup, for example from a plugin):
 
 ```markdown
 ## Process
@@ -619,9 +743,10 @@ Build on existing capabilities:
 
 ### /commit (Utility)
 
-```markdown
+````markdown
 ---
 description: Conventional Commits with quality checks
+disable-model-invocation: true
 ---
 
 # Smart Commit
@@ -645,12 +770,15 @@ Create commit for staged changes.
 - `test` - Tests
 - `refactor` - Restructure
 - `chore` - Maintenance
-```
+````
 
 ### /review (Checker)
 
+Claude Code already has a `/review` command (an alias of the bundled `/code-review`). A project skill named `review` doesn't replace that alias, so give your own checker a distinct name such as `team-review`:
+
 ```markdown
 ---
+name: team-review
 description: Code review with multiple perspectives
 ---
 
@@ -720,7 +848,7 @@ Clean up while green:
 
 ### /workflow (Complete Workflow)
 
-```markdown
+````markdown
 ---
 description: Complete 5-step development workflow
 ---
@@ -771,61 +899,61 @@ Conventional commit:
 - One change per commit
 - Clear description
 - No debug code
-```
+````
 
 ---
 
-## Configuring Skills in .claude/commands/
+## Configuring Skills in .claude/skills/
 
 ### Directory Setup
 
 ```bash
-# Create commands directory
-mkdir -p .claude/commands
+# Create a folder for the skill
+mkdir -p .claude/skills/my-skill
 
-# Create your first skill
-touch .claude/commands/my-skill.md
+# Create its SKILL.md
+touch .claude/skills/my-skill/SKILL.md
 ```
 
 ### Skill Naming
 
-- Use lowercase with hyphens: `my-skill.md`
-- The filename (without `.md`) becomes the command: `/my-skill`
+- Use lowercase with hyphens: `my-skill/`
+- The folder name (or the frontmatter `name`) becomes the command: `/my-skill`
+- A legacy `.claude/commands/my-skill.md` also becomes `/my-skill`; if a skill and a command share a name, the skill wins
 - Be descriptive but concise
 
 ### Testing Your Skill
 
-1. Create the skill file
-2. In Claude Code, type `/` to see it in the menu
-3. Invoke with `/skill-name` or `/skill-name arguments`
+1. Create the skill folder and its `SKILL.md`
+2. In Claude Code, type `/` to see it in the menu (or run `/skills`). Edits are picked up live; run `/reload-skills` if you created a new top-level skills directory during the session
+3. Invoke with `/skill-name` or `/skill-name arguments`, or ask for something that matches the description to test automatic loading
 4. Iterate based on results
 
 ### Organizing Multiple Skills
 
 ```
-.claude/commands/
-├── workflow.md           # Main development workflow
-├── focus-problem.md      # Step 1: Analysis
-├── test-first.md         # Step 3: TDD
-├── smart-commit.md       # Step 5: Commits
-├── project-health-check.md  # Quality audit
-├── generate-component.md # File generation
-└── deploy-staging.md     # Deployment
+.claude/skills/
+├── workflow/SKILL.md              # Main development workflow
+├── focus-problem/SKILL.md         # Step 1: Analysis
+├── test-first/SKILL.md            # Step 3: TDD
+├── smart-commit/SKILL.md          # Step 5: Commits
+├── project-health-check/SKILL.md  # Quality audit
+├── generate-component/SKILL.md    # File generation
+└── deploy-staging/SKILL.md        # Deployment
 ```
 
 ### Skill Validation
 
-Use the `/skill-check` command to validate your skills:
+Check that every `SKILL.md` frontmatter parses:
 
-```
-/skill-check my-skill.md
+```bash
+claude plugin validate .claude/skills
 ```
 
-This checks:
-- Frontmatter is valid
-- Description is present
-- Required fields exist
-- Referenced agents exist
+Then:
+- Run `/skills` to confirm the skill loaded and see its source
+- Run `/skill-doctor` to see each skill's context cost and how often it's used
+- If you use [Director Mode Lite](https://github.com/claude-world/director-mode-lite), its `/skill-check` skill also checks descriptions and referenced agents
 
 ---
 
@@ -836,7 +964,7 @@ This checks:
 | Start simple | One clear purpose per skill |
 | Be descriptive | Clear names and descriptions |
 | Structure well | Use phases, steps, checklists |
-| Handle arguments | Use `$ARGUMENTS` for flexibility |
+| Handle arguments | Use `$ARGUMENTS`, `$0`/`$1`, or named arguments |
 | Define output | Show what success looks like |
 | Iterate | Test and improve over time |
 
@@ -844,6 +972,7 @@ This checks:
 
 **Related:**
 - [Agents Guide](./agents-guide.md) - Working with agents for subtask delegation
+- [Designing Agents](./designing-agents.md) - Custom agents for `context: fork` skills
 - [Quick Reference](./quick-reference.md) - Visual cheat sheets
 
 Back to [README](../README.md)

@@ -4,12 +4,14 @@
 
 ## What is MCP?
 
-MCP is Claude Code's plugin system. Think of MCP servers as plugins that give Claude new abilities beyond its base capabilities:
+MCP is an open standard for connecting AI applications to external systems. Each MCP server gives Claude new tools beyond its built-in ones:
 
 - **Access external data sources** (databases, APIs, file systems)
 - **Execute specialized tools** (Git, package managers, cloud services)
 - **Maintain persistent context** (memory, knowledge graphs)
 - **Integrate with development tools** (IDEs, CI/CD, project management)
+
+MCP servers are not Claude Code's plugin system: a [plugin](https://code.claude.com/docs/en/plugins) is a package that can bundle MCP servers together with skills, subagents, and hooks.
 
 ## MCP Architecture
 
@@ -35,21 +37,25 @@ MCP is Claude Code's plugin system. Think of MCP servers as plugins that give Cl
 
 ## Adding MCP Servers
 
-Always use the official CLI method:
+Use the `claude mcp` CLI (or `/mcp` inside a session):
 
 ```bash
-# Basic syntax
-claude mcp add --scope <scope> <name> [options] -- <command>
+# Remote server over HTTP (recommended for hosted services)
+claude mcp add --transport http <name> <url>
+
+# Local stdio server: everything after -- is the command that starts it
+claude mcp add [--scope <scope>] <name> [-e KEY=value] -- <command> [args...]
 
 # Scopes:
-# --scope user     → ~/.claude/settings.json (all projects)
-# --scope project  → .claude/settings.json (this project)
+# --scope local    → ~/.claude.json, this project only, private (default)
+# --scope project  → .mcp.json in the repo root, shared with your team
+# --scope user     → ~/.claude.json, all your projects
 
-# Environment variables use -e flag:
-claude mcp add --scope project memory -e MEMORY_FILE_PATH=./.claude/memory.json -- npx -y @modelcontextprotocol/server-memory
+# Environment variables use the -e flag:
+claude mcp add --scope project memory -e MEMORY_FILE_PATH=./.claude/memory.jsonl -- npx -y @modelcontextprotocol/server-memory
 ```
 
-> **Note:** The `-e` flag sets environment variables for the MCP server. Multiple `-e` flags can be used for multiple variables.
+> **Note:** `-e` (`--env`) sets environment variables for the server and accepts several `KEY=value` pairs. Keep the server name before `-e`, as above: a name placed right after `-e` would be read as another pair. The SSE transport is deprecated; use `--transport http`.
 
 ## Essential MCP Servers
 
@@ -60,26 +66,27 @@ claude mcp add --scope project filesystem \
   -- npx -y @modelcontextprotocol/server-filesystem .
 ```
 
-**Capabilities:** Read/write files, create directories, list contents, file search
+**Capabilities:** Read/write files, create directories, list contents, file search. Claude Code's built-in Read, Edit, Glob, and Grep tools already cover the project directory, so add this server only for directories outside it.
 
 ### 2. Memory (Knowledge Graph)
 
 ```bash
 # IMPORTANT: Always use MEMORY_FILE_PATH for project isolation
 claude mcp add --scope project memory \
-  -e MEMORY_FILE_PATH=./.claude/memory.json \
+  -e MEMORY_FILE_PATH=./.claude/memory.jsonl \
   -- npx -y @modelcontextprotocol/server-memory
 ```
 
-**Capabilities:** Persistent knowledge storage, cross-session memory, semantic search
+**Capabilities:** An explicit knowledge graph (entities, relations, observations) stored in a JSONL file and searchable across sessions. Claude Code already has built-in memory (CLAUDE.md and auto memory); see [Memory System](./memory-system.md) for when the graph is worth adding.
 
 **Warning:** Without `MEMORY_FILE_PATH`, all projects share the same memory!
 
 ### 3. Git Operations
 
 ```bash
+# The reference Git server is a Python package; uvx runs it without installing
 claude mcp add --scope project git \
-  -- npx -y @modelcontextprotocol/server-git
+  -- uvx mcp-server-git --repository .
 ```
 
 **Capabilities:** Git status, log, diff, branch operations, file blame
@@ -87,12 +94,12 @@ claude mcp add --scope project git \
 ### 4. GitHub Integration
 
 ```bash
-claude mcp add --scope user github \
-  -e GITHUB_TOKEN=<your-token> \
-  -- npx -y @modelcontextprotocol/server-github
+# GitHub's official remote server (the old @modelcontextprotocol/server-github is deprecated)
+claude mcp add --scope user --transport http github https://api.githubcopilot.com/mcp \
+  --header "Authorization: Bearer <your-github-pat>"
 ```
 
-**Capabilities:** Issues, PRs, repository management, code search
+**Capabilities:** Issues, PRs, repository management, code search, Actions
 
 ### 5. Sequential Thinking
 
@@ -106,84 +113,69 @@ claude mcp add --scope user sequential-thinking \
 ### 6. Context7 (Live Documentation)
 
 ```bash
-claude mcp add --scope user context7 \
-  -- npx -y context7-mcp
+# Remote server; get an API key at context7.com (or run: npx ctx7 setup --claude)
+claude mcp add --scope user --transport http context7 https://mcp.context7.com/mcp \
+  --header "Authorization: Bearer <your-context7-api-key>"
 ```
 
 **Capabilities:** Real-time official documentation, up-to-date library references
 
 ## Database MCP Servers
 
-### PostgreSQL
+The original reference servers for PostgreSQL and SQLite have been archived. Prefer a maintained server from your database vendor:
+
+### Supabase (PostgreSQL)
 
 ```bash
-claude mcp add --scope project postgres \
-  -e DATABASE_URL="postgresql://user:pass@localhost:5432/db" \
-  -- npx -y @modelcontextprotocol/server-postgres
-```
-
-### SQLite
-
-```bash
-claude mcp add --scope project sqlite \
-  -e DATABASE_PATH="./data/app.db" \
-  -- npx -y @modelcontextprotocol/server-sqlite
+# Official remote server; authenticate with /mcp after adding it
+claude mcp add --scope project --transport http supabase "https://mcp.supabase.com/mcp?project_ref=<project-ref>&read_only=true"
 ```
 
 ### MongoDB
 
 ```bash
-claude mcp add --scope project mongodb \
-  -e MONGODB_URI="mongodb://localhost:27017/db" \
-  -- npx -y @modelcontextprotocol/server-mongodb
+# Official MongoDB server, read-only
+claude mcp add --scope local mongodb \
+  -e MDB_MCP_CONNECTION_STRING="mongodb://localhost:27017/db" \
+  -- npx -y mongodb-mcp-server --readOnly
 ```
+
+Keep database credentials out of `.mcp.json`: use the local scope, as above, or reference an environment variable such as `${DATABASE_URL}` in a shared config.
 
 ## MCP Scope Hierarchy
 
-MCP servers follow Claude Code's four-layer hierarchy:
+Where a server is defined decides who gets it:
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Layer 1: Enterprise                         │
-│  Location: /etc/claude-code/settings.json    │
-│  Control: IT department (allowlist)          │
+│  Managed (organization)                      │
+│  Location: managed-mcp.json or managed       │
+│            settings (IT controls)            │
 ├─────────────────────────────────────────────┤
-│  Layer 2: User Global                        │
-│  Location: ~/.claude/settings.json           │
-│  Use: Personal MCP servers (github, etc.)    │
+│  Local scope (default)                       │
+│  Location: ~/.claude.json, under this        │
+│            project's path                    │
+│  Use: Personal or credentialed servers       │
 ├─────────────────────────────────────────────┤
-│  Layer 3: Project                            │
-│  Location: .mcp.json (NOT settings.json)     │
-│  Use: Project-specific (db, memory)          │
+│  Project scope                               │
+│  Location: .mcp.json in the repo root        │
+│  Use: Shared servers (committed to git)      │
 ├─────────────────────────────────────────────┤
-│  Layer 4: Project Local                      │
-│  Location: .mcp.local.json                   │
-│  Use: Personal overrides (gitignored)        │
+│  User scope                                  │
+│  Location: ~/.claude.json (top level)        │
+│  Use: Your servers for every project         │
 └─────────────────────────────────────────────┘
 ```
 
-> **Important:** Project-scoped MCP servers are stored in `.mcp.json` (not `.claude/settings.json`). Use `claude mcp add --scope project` which automatically creates/updates the correct file.
+> **Important:** MCP servers are never configured in `settings.json`. Use `claude mcp add --scope project` to create or update `.mcp.json`; Claude Code asks each user to approve project servers the first time.
 
-**Priority:** Local (.mcp.local.json) > Project (.mcp.json) > User (~/.claude.json) > Enterprise (/etc/claude-code/settings.json)
+**Priority** when the same name is defined twice: Local > Project > User > plugin-provided servers > claude.ai connectors. An organization's managed servers take precedence over all of them.
 
 ## MCP Context Cost
 
-Each MCP server consumes context tokens. Be mindful:
+MCP tool search is on by default: Claude Code loads a server's tool definitions on demand instead of sending every tool with every request, so a large server no longer costs thousands of tokens up front. Servers still add process overhead and tool names to the context, and every enabled server is another set of actions Claude can take.
 
-| MCP Server | Approx. Tokens | Recommendation |
-|------------|----------------|----------------|
-| hubspot | ~1,800 | Small |
-| netlify | ~2,000 | Small |
-| figma | ~2,500 | Acceptable |
-| notion | Optimized | Official |
-| vercel | ~3,000 | Acceptable |
-| stripe | ~4,000 | Medium |
-| linear | ~6,200 | Large |
-| atlassian | ~7,100 | Large |
-| asana | ~12,800 | Too large |
-| sentry | ~14,000 | Use sparingly |
-
-**Best Practice:** Only enable MCP servers you actively use.
+**Best Practice:** Only enable MCP servers you actively use, and run `/context` to see what a session is spending its context on.
 
 ## Configuration Files
 
@@ -202,34 +194,41 @@ Each MCP server consumes context tokens. Be mindful:
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-memory"],
       "env": {
-        "MEMORY_FILE_PATH": "./.claude/memory.json"
+        "MEMORY_FILE_PATH": "./.claude/memory.jsonl"
       }
     }
   }
 }
 ```
 
-### User Global Configuration (~/.claude.json)
+A remote server needs `"type": "http"` next to its `url`; an entry with a `url` but no `type` is rejected. `${VAR}` and `${VAR:-default}` are expanded from your environment, so the file can be committed without secrets:
 
 ```json
 {
   "mcpServers": {
     "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": {
-        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_PAT}"
       }
     }
   }
 }
 ```
 
+### User Configuration (~/.claude.json)
+
+`claude mcp add --scope user` writes to the top-level `mcpServers` key of `~/.claude.json`, and `--scope local` writes under the current project's entry in the same file. Let the CLI manage this file rather than editing it by hand.
+
 ## MCP Management Commands
 
 ```bash
-# List all MCP servers
+# List all MCP servers and their connection status
 claude mcp list
+
+# Show one server's configuration
+claude mcp get <name>
 
 # Add a new server
 claude mcp add --scope project <name> -- <command>
@@ -237,10 +236,10 @@ claude mcp add --scope project <name> -- <command>
 # Remove a server
 claude mcp remove --scope project <name>
 
-# Check server status
-claude mcp status
+# Inside a session: status, OAuth login, reconnect
+/mcp
 
-# Reset project MCP choices (troubleshooting)
+# Reset project MCP approval choices (troubleshooting)
 claude mcp reset-project-choices
 ```
 
@@ -248,12 +247,12 @@ claude mcp reset-project-choices
 
 ### Database Query
 
-With postgres MCP enabled:
+With a database MCP server enabled:
 
 ```
 User: "Show me users who signed up in the last 7 days"
 
-Claude: [Uses postgres MCP]
+Claude: [Uses the database MCP server]
   → Queries: SELECT * FROM users WHERE created_at > NOW() - INTERVAL '7 days'
   → Returns formatted results
 ```
@@ -296,9 +295,9 @@ claude mcp reset-project-choices
 claude mcp add --scope project <name> -- <command>
 ```
 
-### Permission Issues
+### Project Server Not Approved
 
-Ensure `enableAllProjectMcpServers: true` in project settings.
+Servers from `.mcp.json` wait for approval in interactive sessions. Approve them in the startup prompt or `/mcp`, list trusted ones in `enabledMcpjsonServers` in your settings, or set `enableAllProjectMcpServers: true` in `.claude/settings.local.json` for a repository you trust.
 
 ### Environment Variable Issues
 
@@ -317,24 +316,24 @@ Use `${VAR_NAME}` syntax for environment variables in config files:
 | Feature | MCP | Built-in Tools | Hooks |
 |---------|-----|----------------|-------|
 | External data access | Primary | Limited | No |
-| Persistent storage | Memory MCP | Session only | No |
+| Persistent storage | Memory MCP (knowledge graph) | CLAUDE.md, auto memory | No |
 | Custom integrations | Extensible | Fixed | Via commands |
-| Context cost | Variable | Included | Minimal |
+| Context cost | Loaded on demand (tool search) | Included | Minimal |
 
 ## Getting Started
 
 **Today:**
-1. Add filesystem and memory MCP to your project
-2. Use `MEMORY_FILE_PATH` for project isolation
-3. Save one important decision to memory
+1. Add one MCP server you need (GitHub, your database, or Context7)
+2. Run `/mcp` to confirm it connected
+3. Ask Claude to use it on a real task
 
 **This week:**
-1. Add database MCP if applicable
-2. Configure GitHub MCP for issue tracking
-3. Explore memory commands (/memory-*)
+1. Share team servers through `.mcp.json` (`--scope project`)
+2. Keep credentials in the local scope or in `${VAR}` references
+3. Add the memory server only if you want an explicit knowledge graph on top of CLAUDE.md and auto memory
 
 ---
 
 *MCP transforms Claude Code from a standalone assistant into an integrated development platform.*
 
-*Reference: [Model Context Protocol](https://modelcontextprotocol.io/) | [Claude Code Docs](https://docs.anthropic.com/en/docs/claude-code)*
+*Reference: [Model Context Protocol](https://modelcontextprotocol.io/) | [Claude Code MCP docs](https://code.claude.com/docs/en/mcp)*

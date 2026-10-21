@@ -1,17 +1,17 @@
 # Simple CLAUDE.md Template
 
-A minimal but effective CLAUDE.md that you can adapt for any project.
+A minimal but effective CLAUDE.md that you can adapt for any project. Save it as `CLAUDE.md` (or `.claude/CLAUDE.md`) in your project root and commit it. To start from a draft instead of a blank page, run `/init` and let Claude generate one from your codebase, then trim it to this shape.
 
 ## The Template
 
-```markdown
+````markdown
 # [Your Project Name]
 
 > Brief description of what this project does
 
 ## Tech Stack
 
-- **Framework**: [e.g., Next.js 14, Express, Django]
+- **Framework**: [e.g., Next.js 16, Express, Django]
 - **Database**: [e.g., PostgreSQL, MongoDB, SQLite]
 - **Language**: [e.g., TypeScript, Python, Go]
 
@@ -67,7 +67,7 @@ npm run lint    # Check code style
 // components/FeatureName/FeatureName.tsx - Component
 // components/FeatureName/FeatureName.test.tsx - Tests
 ```
-```
+````
 
 ## Customization Tips
 
@@ -76,7 +76,7 @@ npm run lint    # Check code style
 Add:
 ```markdown
 ## State Management
-- Use React Query for server state
+- Use TanStack Query for server state
 - Use Zustand for client state
 - Avoid prop drilling - use context
 
@@ -131,6 +131,13 @@ Start with this template and expand as you notice:
 - Patterns Claude should follow → Document them
 - Decisions Claude should know → Write them down
 
+As it grows, keep it under ~200 lines:
+- Guidance for one directory or file type → A rule in `.claude/rules/` with `paths:` frontmatter
+- Multi-step procedures (deploy, release) → A skill in `.claude/skills/`
+- Rules that must never be broken → `permissions` in `.claude/settings.json` or a hook (CLAUDE.md is guidance, not enforcement)
+
+After editing, run `/context` to confirm Claude loaded the file.
+
 ---
 
-See also: [CLAUDE.md Principles](../concepts/claude-md-principles.md)
+See also: [CLAUDE.md Principles](../concepts/claude-md-principles.md) | [CLAUDE.md Templates by Framework](../templates/claude-md-templates.md)

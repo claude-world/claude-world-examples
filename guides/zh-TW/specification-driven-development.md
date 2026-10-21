@@ -169,16 +169,24 @@ Claude：[精確實作規格中的內容]
 
 ### 步驟 1：撰寫規格
 
-在 markdown 檔案中撰寫你的規格：
+在 markdown 檔案（例如 `SPEC.md`）中撰寫你的規格：
 
 ```
-你："I'm going to write a spec for magic link authentication.
+你："I've written a spec for magic link authentication in @SPEC.md.
      Review it and ask clarifying questions before we implement."
+```
+
+從一張白紙開始？讓 Claude 訪談你並起草規格：
+
+```
+你："I want to add passwordless magic link login. Interview me in detail
+     using the AskUserQuestion tool about implementation, edge cases,
+     security and tradeoffs, then write a complete spec to SPEC.md."
 ```
 
 ### 步驟 2：釐清輪次
 
-讓 Claude 識別缺口：
+讓 Claude 識別缺口。在 plan mode 中進行這一輪（按 `Shift+Tab` 直到狀態列顯示 `⏸ plan mode on`，或輸入 `/plan`），Claude 可以閱讀程式碼庫並提問，但不會編輯任何檔案：
 
 ```
 Claude："I have a few questions about the spec:
@@ -216,10 +224,10 @@ Claude："I have a few questions about the spec:
 
 ### 步驟 4：實作
 
-現在 Claude 帶著清晰理解實作：
+現在 Claude 帶著清晰理解實作。先按 `Shift+Tab` 離開 plan mode；如果規格討論拉得很長，再用 `/clear` 開啟新的對話，讓實作從乾淨的 context 開始，並以書面規格作為依據：
 
 ```
-你："Implement the magic link authentication per the spec.
+你："Implement the magic link authentication per @SPEC.md.
      Check off acceptance criteria as you complete them."
 
 Claude：[帶著清晰理解實作]
@@ -227,12 +235,14 @@ Claude：[帶著清晰理解實作]
         [記錄任何與規格的偏差]
 ```
 
+每個提示都會建立一個 checkpoint。如果某個做法走偏了，按兩次 `Esc` 或執行 `/rewind` 還原程式碼與對話，再換個方式嘗試。Checkpoint 只涵蓋 Claude 的檔案編輯，所以仍要持續 commit 到 git。
+
 ### 步驟 5：驗證
 
-對照規格審查：
+對照規格審查。讓 subagent 在全新的 context 中檢查成果，不受產生這些變更的推理過程影響：
 
 ```
-你："Verify the implementation against the spec.
+你："Use a subagent to verify the implementation against @SPEC.md.
      List any criteria not yet met."
 
 Claude："Verification Results:
@@ -246,6 +256,8 @@ Recommended actions:
 1. Add rate limiting tests
 2. Investigate SendGrid latency"
 ```
+
+若要針對同一份差異做正確性檢查，請執行 `/code-review`。
 
 ## 進階模式
 
@@ -285,9 +297,10 @@ describe('Magic Link Authentication', () => {
     });
 
     it('creates magic link valid for 15 minutes', async () => {
-      const { token, expiresAt } = await requestMagicLink('new@example.com');
+      const { expiresAt } = await requestMagicLink('new@example.com');
       const validity = expiresAt - Date.now();
-      expect(validity).toBe(15 * 60 * 1000);
+      expect(validity).toBeGreaterThan(14 * 60 * 1000);
+      expect(validity).toBeLessThanOrEqual(15 * 60 * 1000);
     });
 
     // ... 更多符合標準的測試
@@ -447,4 +460,4 @@ Users complain about passwords.
 
 ---
 
-另請參閱：[Feature Development](../examples/feature-development.md) | [Production Readiness](./production-readiness.md)
+另請參閱：[功能開發](../../examples/zh-TW/feature-development.md) | [正式環境就緒](./production-readiness.md)

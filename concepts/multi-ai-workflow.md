@@ -14,6 +14,8 @@ Each AI CLI has different strengths:
 
 Using them together can be more efficient than using one for everything.
 
+Claude Code also covers more of this ground than it used to: current Claude models have a 1M-token context window, subagents run in the background (`Ctrl+B`, `/tasks`), and the built-in `/batch` skill fans a large mechanical change out across parallel worktrees. Bring in another CLI when you want its particular strengths or an independent second opinion.
+
 ## The Handoff Pattern
 
 ### When to Stay with Claude
@@ -45,6 +47,8 @@ Using them together can be more efficient than using one for everything.
 ✓ Background processing
 ✓ Tasks that can run while you do other work
 ```
+
+> Google's Gemini CLI README now notes that Gemini CLI is not optimized for the latest Gemini models and points to its Antigravity CLI for coding with them. The file-based handoffs below work the same way with any CLI.
 
 ## Practical Examples
 
@@ -183,6 +187,8 @@ Rename all instances of `oldFunction` to `newFunction`
    → Handles edge cases
 ```
 
+`.claude-checkpoint.json` here is just a file you ask Claude to write, not a Claude Code feature. Claude Code's own checkpoints (`Esc Esc` / `/rewind`) live inside its session, so other CLIs can't read them.
+
 ### Strategy 3: Git Branch Isolation
 
 ```bash
@@ -199,6 +205,36 @@ git checkout feature/auth-refactor-analysis
 git merge feature/auth-refactor-impl
 # Claude reviews merged result
 ```
+
+To let two CLIs work at the same time without sharing a checkout, give each its own worktree: `claude --worktree <name>`, `codex --worktree` and `gemini --worktree` each start in a new git worktree.
+
+### Strategy 4: Headless Handoffs
+
+Each CLI has a one-shot, non-interactive mode, so a handoff can be a short script:
+
+```bash
+# Install (macOS/Linux; each project's README lists Windows and other options)
+curl -fsSL https://claude.ai/install.sh | bash          # Claude Code
+curl -fsSL https://chatgpt.com/codex/install.sh | sh    # Codex CLI (or npm install -g @openai/codex)
+npm install -g @google/gemini-cli                       # Gemini CLI (or brew install gemini-cli)
+
+# 1. Claude plans and writes the handoff file
+claude -p "Plan renaming UserAuth to Authentication; write the plan to handoff-context.md" \
+  --permission-mode acceptEdits
+
+# 2. Codex makes the mechanical edits and saves its final summary
+codex exec --sandbox workspace-write -o codex-summary.md \
+  "Follow handoff-context.md and perform the rename"
+
+# 3. Gemini reviews the plan headlessly (the -p prompt is appended to stdin)
+cat handoff-context.md | gemini -p "List anything this rename plan misses" > gemini-notes.md
+
+# 4. Claude validates
+claude -p "Read codex-summary.md and gemini-notes.md, check for missed references, run the tests" \
+  --allowedTools "Bash(npm test *)"
+```
+
+Each CLI keeps its own session history, and a session from one can't be resumed in another, so the handoff files carry the context. The community director-mode-lite plugin packages this pattern as `/session-relay`, `/handoff-codex` and `/handoff-gemini` skills: `/plugin marketplace add claude-world/director-mode-lite`, then `/plugin install director-mode-lite@director-mode-lite`.
 
 ## Decision Framework
 
@@ -304,6 +340,8 @@ Claude → Codex → Human Review → Claude Validation
 ✓ "Codex, rename 'foo' to 'bar' in all 200 files"
   → Fast, perfect for mechanical tasks
 ```
+
+Staying in Claude Code anyway? The built-in `/batch <instruction>` skill splits a large mechanical change into parallel units, each in its own worktree, and `/model haiku` or `/effort low` makes a simple pass cheaper.
 
 ### Don't: Lose Context Between Handoffs
 

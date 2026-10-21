@@ -81,44 +81,42 @@ on:
 env:
   BLOG_URL: https://claude.com/blog
   TRACKING_FILE: 00-upstream-tracking/claude-blog/processed-articles.json
-  CLAUDE_MODEL: claude-sonnet-4-20250514
+  # Long-form article writing: Sonnet balances quality and cost
+  CLAUDE_MODEL: claude-sonnet-5-5
 
 jobs:
   check-blog:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     outputs:
       has_new: ${{ steps.check.outputs.has_new }}
       articles_json: ${{ steps.check.outputs.articles_json }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Check for new blog articles
         id: check
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          SPECIFIC_URL: ${{ github.event.inputs.blog_url }}
-          FORCE_PROCESS: ${{ github.event.inputs.force_process }}
+          SPECIFIC_URL: ${{ inputs.blog_url }}
+          FORCE_PROCESS: ${{ inputs.force_process }}
         run: |
           # Check script runs here (see next section)
           node /tmp/check-blog.js > /tmp/result.json
 
-          HAS_NEW=$(cat /tmp/result.json | jq -r '.has_new')
-          echo "has_new=$HAS_NEW" >> $GITHUB_OUTPUT
+          HAS_NEW=$(jq -r '.has_new' /tmp/result.json)
+          echo "has_new=$HAS_NEW" >> "$GITHUB_OUTPUT"
 
           if [ "$HAS_NEW" == "true" ]; then
-            ARTICLES=$(cat /tmp/result.json | jq -c '.articles')
-            echo "articles_json=$(echo "$ARTICLES" | base64 -w 0)" >> $GITHUB_OUTPUT
+            echo "articles_json=$(jq -c '.articles' /tmp/result.json | base64 -w 0)" >> "$GITHUB_OUTPUT"
           fi
 ```
 
@@ -227,8 +225,9 @@ async function withRetry(fn, maxRetries = 3) {
 function callClaudeOnce(prompt) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
-      model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
-      max_tokens: 4000,
+      model: process.env.CLAUDE_MODEL || 'claude-sonnet-5-5',
+      // Thinking tokens count toward max_tokens, so leave headroom
+      max_tokens: 8192,
       messages: [{ role: 'user', content: prompt }]
     });
 
@@ -247,8 +246,12 @@ function callClaudeOnce(prompt) {
       res.on('end', () => {
         try {
           const response = JSON.parse(data);
-          if (response.error) reject(new Error(response.error.message));
-          else resolve(response.content[0].text);
+          if (response.error) return reject(new Error(response.error.message));
+          // Current models can return a thinking block first; join the text blocks
+          resolve(response.content
+            .filter(block => block.type === 'text')
+            .map(block => block.text)
+            .join(''));
         } catch (e) {
           reject(e);
         }
@@ -295,12 +298,12 @@ generate-articles:
 
   steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
-        node-version: '20'
+        node-version: '24'
 
     - name: Generate website articles
       env:
@@ -528,7 +531,7 @@ post-social:
 
   steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         ref: main  # Get latest with new articles
 
@@ -616,58 +619,36 @@ async function postThread(posts) {
 
 ```javascript
 // scripts/threads-post.js
-const https = require('https');
-
+// Publishing takes two calls: create a container, then publish it.
+// Parameters, including the access token, go in the POST body rather than the URL.
 const userId = process.env.THREADS_USER_ID;
 const accessToken = process.env.THREADS_ACCESS_TOKEN;
+const baseUrl = `https://graph.threads.net/v1.0/${userId}`;
 
-function postThreads(text, replyToId = null) {
-  return new Promise((resolve, reject) => {
-    let createUrl = `https://graph.threads.net/v1.0/${userId}/threads?media_type=TEXT&text=${encodeURIComponent(text)}&access_token=${accessToken}`;
-
-    if (replyToId) {
-      createUrl += `&reply_to_id=${replyToId}`;
-    }
-
-    // Step 1: Create container
-    https.request(createUrl, { method: 'POST' }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const container = JSON.parse(data);
-          if (!container.id) {
-            reject(new Error(`Create failed: ${data}`));
-            return;
-          }
-
-          // Step 2: Wait for processing then publish
-          setTimeout(() => {
-            const publishUrl = `https://graph.threads.net/v1.0/${userId}/threads_publish?creation_id=${container.id}&access_token=${accessToken}`;
-
-            https.request(publishUrl, { method: 'POST' }, (res2) => {
-              let data2 = '';
-              res2.on('data', chunk => data2 += chunk);
-              res2.on('end', () => {
-                try {
-                  const result = JSON.parse(data2);
-                  if (result.id) {
-                    resolve(result);
-                  } else {
-                    reject(new Error(`Publish failed: ${data2}`));
-                  }
-                } catch (e) {
-                  reject(new Error(`Parse error: ${data2}`));
-                }
-              });
-            }).on('error', reject).end();
-          }, 3000);  // Wait for Threads processing
-        } catch (e) {
-          reject(new Error(`Parse error: ${data}`));
-        }
-      });
-    }).on('error', reject).end();
+async function graphPost(path, params) {
+  const response = await fetch(`${baseUrl}/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...params, access_token: accessToken })
   });
+  const data = await response.json();
+  if (data.error || !data.id) {
+    throw new Error(`${path} failed: ${JSON.stringify(data)}`);
+  }
+  return data;
+}
+
+async function postThreads(text, replyToId = null) {
+  // Step 1: Create container
+  const container = await graphPost('threads', {
+    media_type: 'TEXT',
+    text,
+    ...(replyToId ? { reply_to_id: replyToId } : {})
+  });
+
+  // Step 2: Wait for processing, then publish
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  return graphPost('threads_publish', { creation_id: container.id });
 }
 ```
 
@@ -768,7 +749,7 @@ When articles are processed, automatically create development issues for opportu
 const VERSION = process.env.VERSION;
 const RELEASE_NAME = process.env.RELEASE_NAME;
 const RELEASE_URL = process.env.RELEASE_URL;
-const RELEASE_BODY = Buffer.from(process.env.RELEASE_BODY_B64 || '', 'base64').toString('utf-8');
+const RELEASE_BODY = process.env.RELEASE_BODY || '';
 const NEWSLETTER_SLUG = process.env.NEWSLETTER_SLUG;
 const TODAY = new Date().toISOString().split('T')[0];
 
@@ -848,14 +829,17 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     if: github.repository == 'owner/repo'
+    permissions:
+      contents: write
+      pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Generate Newsletter Articles
         env:
@@ -863,12 +847,13 @@ jobs:
           VERSION: ${{ github.event.release.tag_name }}
           RELEASE_NAME: ${{ github.event.release.name }}
           RELEASE_URL: ${{ github.event.release.html_url }}
-          RELEASE_BODY_B64: ${{ github.event.release.body && toBase64(github.event.release.body) || '' }}
+          # Environment variables carry multi-line text as-is, so no encoding is needed
+          RELEASE_BODY: ${{ github.event.release.body }}
           NEWSLETTER_SLUG: release-${{ github.event.release.tag_name }}
         run: node scripts/generate-newsletter-from-release.js
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v8
         with:
           title: "Newsletter: ${{ github.event.release.tag_name }}"
           body: "Auto-generated newsletter for release ${{ github.event.release.tag_name }}"
@@ -901,9 +886,12 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 env:
   TRACKING_FILE: tracking/processed-articles.json
-  CLAUDE_MODEL: claude-sonnet-4-20250514
+  CLAUDE_MODEL: claude-sonnet-5-5
 
 jobs:
   check-blog:
@@ -914,10 +902,10 @@ jobs:
       has_new: ${{ steps.check.outputs.has_new }}
       articles_json: ${{ steps.check.outputs.articles_json }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
       - name: Check for new articles
         id: check
         env:
@@ -931,10 +919,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
       - name: Generate articles
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -956,12 +944,12 @@ jobs:
       issues: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
       - name: Post to X
         env:
           X_API_KEY: ${{ secrets.X_API_KEY }}
@@ -1050,7 +1038,7 @@ async function healthCheck() {
 
 ## Resources
 
-- [Claude API Documentation](https://docs.anthropic.com/claude/reference)
+- [Claude API Documentation](https://platform.claude.com/docs)
 - [X API v2 Documentation](https://developer.twitter.com/en/docs/twitter-api)
 - [Threads API Documentation](https://developers.facebook.com/docs/threads)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)

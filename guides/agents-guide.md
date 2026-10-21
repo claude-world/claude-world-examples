@@ -1,67 +1,77 @@
 # Complete Guide to Claude Code Agents
 
-> From single prompts to parallel orchestration - mastering agents unlocks 5-10x efficiency
+> From single prompts to parallel orchestration - mastering agents can multiply your efficiency
 
 ## Quick Reference
 
-| Agent | Purpose | Default Model | Use For |
-|-------|---------|---------------|---------|
-| `Explore` | Fast codebase navigation | Haiku 4.5 | File search, pattern matching |
-| `general-purpose` | Complex multi-step tasks | Sonnet 4.6 | Implementation, analysis |
-| `code-reviewer` | Code quality analysis | Sonnet 4.6 | PR reviews, patterns |
-| `security-auditor` | Vulnerability detection | Sonnet 4.6 | Auth, payments, data |
-| `test-runner` | Test execution | Haiku 4.5 | Running, analyzing tests |
-| `debugger` | Root cause analysis | Sonnet 4.6 | Bug investigation |
-| `refactor-assistant` | Code improvement | Sonnet 4.6 | Cleanup, restructuring |
-| `doc-writer` | Documentation | Haiku/Sonnet | README, API docs |
+Built-in agents ship with Claude Code. The others are **custom agents**: Markdown files you define in `.claude/agents/` or install with a plugin. See [Custom Agents](#custom-agents) below.
 
-## The Task Tool
+| Agent | Kind | Purpose | Model | Use For |
+|-------|------|---------|-------|---------|
+| `Explore` | Built-in | Read-only codebase search | Main conversation's model | File search, pattern matching |
+| `Plan` | Built-in | Research during plan mode | Main conversation's model | Context before a plan |
+| `general-purpose` | Built-in | Complex multi-step tasks | Main conversation's model | Implementation, analysis |
+| `code-reviewer` | Custom | Code quality analysis | `sonnet` (typical) | PR reviews, patterns |
+| `security-auditor` | Custom | Vulnerability detection | `sonnet` or `opus` | Auth, payments, data |
+| `test-runner` | Custom | Test execution | `haiku` or `sonnet` | Running, analyzing tests |
+| `debugger` | Custom | Root cause analysis | `sonnet` (typical) | Bug investigation |
+| `refactor-assistant` | Custom | Code improvement | `sonnet` (typical) | Cleanup, restructuring |
+| `doc-writer` | Custom | Documentation | `haiku` or `sonnet` | README, API docs |
 
-All agents are spawned via the `Task` tool. The examples below use a conceptual JavaScript-like syntax to illustrate the parameters—Claude Code internally handles the actual invocation.
+A custom agent runs on the model in its `model:` field. Without one it follows the main conversation's model (or `CLAUDE_CODE_SUBAGENT_MODEL`, if you set it). Claude Code also has helper agents (`claude`, `statusline-setup`, `claude-code-guide`) that it uses automatically.
+
+## The Agent Tool
+
+All agents are spawned via the `Agent` tool (named `Task` before Claude Code v2.1.63; `Task(...)` still works as an alias in settings and agent definitions). The examples below use a conceptual JavaScript-like syntax to illustrate the parameters—Claude Code internally handles the actual invocation.
 
 **Conceptual syntax (for illustration):**
 
 ```javascript
-Task({
-  subagent_type: "Explore",           // Required: Agent type
-  model: "haiku",                      // Optional: haiku, sonnet, opus
+Agent({
+  subagent_type: "Explore",            // Agent type: built-in or custom name
+  description: "Find login handler",   // Short label shown in the transcript
   prompt: "Your task description",     // Required: What to do
-  run_in_background: false             // Optional: Async execution
+  model: "sonnet",                     // Optional: sonnet, opus, haiku, fable, inherit, or a full model ID
+  effort: "high",                      // Optional: low, medium, high, xhigh, max
+  isolation: "worktree",               // Optional: work in a temporary git worktree
+  run_in_background: true              // Optional: don't block (the default from the main conversation)
 })
 ```
 
-> **Note:** When using Claude Code, you don't write this syntax directly. Instead, you describe what you want and Claude Code spawns the appropriate agents. The syntax above shows the underlying parameters for documentation purposes.
+> **Note:** When using Claude Code, you don't write this syntax directly. Instead, you describe what you want ("use the code-reviewer agent on my changes", "explore auth, billing, and the API in parallel") and Claude Code spawns the appropriate agents. To guarantee a specific agent runs, @-mention it: `@"code-reviewer (agent)"`. The syntax above shows the underlying parameters for documentation purposes.
 
 ## Agent Types
 
-### Explore Agent (Fastest)
+### Explore Agent (Fast, Read-Only)
 
-The **Explore agent** is Claude Code's efficiency powerhouse. Powered by Haiku 4.5, it replaces 5 manual search operations with one intelligent query.
+The **Explore agent** is Claude Code's built-in search specialist. It replaces a string of manual searches with one delegated query, runs on your main conversation's model, and starts without your CLAUDE.md files or git status to keep research fast and inexpensive. Only its summary comes back to your conversation.
 
 #### Thoroughness Levels
 
-| Level | Time | Use Case |
-|-------|------|----------|
-| `quick` | 10-30s | Find specific file/function |
-| `medium` | 30-60s | Map module structure |
-| `very thorough` | 60-120s | Complete flow analysis |
+When Claude invokes Explore, it picks a thoroughness level:
+
+| Level | Depth | Use Case |
+|-------|-------|----------|
+| `quick` | Targeted lookup | Find specific file/function |
+| `medium` | Balanced exploration | Map module structure |
+| `very thorough` | Comprehensive analysis | Complete flow analysis |
 
 #### Examples
 
 **Quick search:**
 ```javascript
-Task({
+Agent({
   subagent_type: "Explore",
-  model: "haiku",
+  description: "Find login handler",
   prompt: "Explore auth (thoroughness: quick). Find login handler."
 })
 ```
 
 **Medium exploration:**
 ```javascript
-Task({
+Agent({
   subagent_type: "Explore",
-  model: "haiku",
+  description: "Map Stripe integration",
   prompt: `
     Explore payment module (thoroughness: medium).
     Find Stripe integration points and webhook handlers.
@@ -71,9 +81,9 @@ Task({
 
 **Thorough analysis:**
 ```javascript
-Task({
+Agent({
   subagent_type: "Explore",
-  model: "haiku",
+  description: "Map complete auth flow",
   prompt: `
     Explore authentication (thoroughness: very thorough).
     Map complete auth flow: login → session → token refresh → logout.
@@ -81,35 +91,56 @@ Task({
 })
 ```
 
-#### Why Explore is Faster
+#### Why Explore Is Efficient
 
-**Old approach (5 manual steps):**
+**Old approach (5 manual steps in your main conversation):**
 ```
-Glob *auth*.ts          → 15s
-Grep "JWT"              → 15s
-Read auth/index.ts      → 10s
-Grep middleware         → 15s
-Read test files         → 10s
-Total: 65 seconds
+Glob *auth*.ts          → file list lands in your context
+Grep "JWT"              → every match lands in your context
+Read auth/index.ts      → the whole file lands in your context
+Grep middleware         → more matches
+Read test files         → more files
+Result: your context fills with search output you won't reuse
 ```
 
 **New approach (1 Explore agent):**
 ```javascript
-Task({
+Agent({
   subagent_type: "Explore",
-  model: "haiku",
+  description: "Map auth module",
   prompt: "Explore auth (thoroughness: medium). Map JWT, middleware, tests."
 })
-// Total: 30-45 seconds
+// The searching happens in Explore's own context window; only the summary comes back
 ```
+
+#### Run Explore on Haiku
+
+Explore is not Haiku-powered by default. To explore on a lower-cost model, define your own subagent named `Explore` in `.claude/agents/` (project) or `~/.claude/agents/` (user). It overrides the built-in and keeps its own `model`:
+
+```markdown
+---
+name: Explore
+description: Fast read-only codebase search. Use for finding files, symbols, and patterns.
+tools: Read, Grep, Glob
+model: haiku
+---
+
+You are a read-only search agent. Find what was asked, cite file paths and
+line numbers, and return a short summary. Never modify files.
+```
+
+### Plan Agent
+
+Claude uses the built-in **Plan** agent in plan mode (`Shift+Tab` cycles to it) to research your codebase before presenting a plan. It is read-only, runs on your main conversation's model, and you rarely call it directly.
 
 ### general-purpose Agent
 
-For complex, multi-step tasks requiring deeper reasoning.
+For complex, multi-step tasks that need both exploration and action. It has every tool available to subagents and runs on the main conversation's model unless a `model` is passed.
 
 ```javascript
-Task({
+Agent({
   subagent_type: "general-purpose",
+  description: "Implement profile editing",
   model: "sonnet",
   prompt: `
     Implement user profile editing feature.
@@ -121,14 +152,35 @@ Task({
 })
 ```
 
-### code-reviewer Agent
+### Custom Agents
+
+The agents in this section are **not built into Claude Code**. Each is a custom subagent: a Markdown file with YAML frontmatter that Claude can delegate to by name. Get them in one of two ways:
+
+- **Install a plugin.** [Director Mode Lite](https://github.com/claude-world/director-mode-lite) ships `code-reviewer`, `debugger`, and `doc-writer`: run `/plugin marketplace add claude-world/director-mode-lite`, then `/plugin install director-mode-lite@director-mode-lite`. Plugin agents appear under a scoped name such as `director-mode-lite:code-reviewer`.
+- **Define them yourself** in `.claude/agents/<name>.md` (this project; commit it to share with your team) or `~/.claude/agents/<name>.md` (all your projects). Or ask Claude: "Create a security-auditor agent in .claude/agents/ that ...".
+
+```markdown
+---
+name: security-auditor
+description: Security specialist for auth, payments, and data handling. Use proactively after changes to security-sensitive code.
+tools: Read, Grep, Glob, Bash
+model: sonnet
+---
+
+You are a security auditor. Check the changed code against the OWASP Top 10,
+report each finding with severity and file:line, and suggest a concrete fix.
+```
+
+The examples below use plain names, as if each agent is defined in `.claude/agents/`. A `model` passed on a call overrides the agent's own `model:` for that call. See [Designing Agents](./designing-agents.md) for every frontmatter field.
+
+#### code-reviewer
 
 Specializes in code quality and best practices.
 
 ```javascript
-Task({
+Agent({
   subagent_type: "code-reviewer",
-  model: "sonnet",
+  description: "Review auth changes",
   prompt: `
     Review changes in the authentication module.
     Check for:
@@ -142,14 +194,15 @@ Task({
 })
 ```
 
-### security-auditor Agent
+#### security-auditor
 
 Critical for auth, payments, and data handling code.
 
 ```javascript
-Task({
+Agent({
   subagent_type: "security-auditor",
-  model: "sonnet",  // Use "opus" for critical code
+  description: "Audit auth module",
+  model: "opus",  // Per-call override for critical code
   prompt: `
     Audit the authentication module.
     Check for OWASP Top 10:
@@ -172,14 +225,14 @@ Task({
 | API endpoints | Medium |
 | File uploads | High |
 
-### test-runner Agent
+#### test-runner
 
 Handles test execution and coverage analysis.
 
 ```javascript
-Task({
+Agent({
   subagent_type: "test-runner",
-  model: "haiku",
+  description: "Run auth tests",
   prompt: `
     Run all tests related to user authentication.
     Report:
@@ -190,14 +243,14 @@ Task({
 })
 ```
 
-### debugger Agent
+#### debugger
 
 Systematic root cause analysis.
 
 ```javascript
-Task({
+Agent({
   subagent_type: "debugger",
-  model: "sonnet",
+  description: "Debug checkout TypeError",
   prompt: `
     Investigate: TypeError: Cannot read 'id' of undefined
     at CheckoutForm.handleSubmit (checkout.tsx:45)
@@ -209,14 +262,14 @@ Task({
 })
 ```
 
-### refactor-assistant Agent
+#### refactor-assistant
 
 Code improvement without changing functionality.
 
 ```javascript
-Task({
+Agent({
   subagent_type: "refactor-assistant",
-  model: "sonnet",
+  description: "Refactor helpers module",
   prompt: `
     Refactor utils/helpers.ts:
     - Split into focused modules
@@ -227,14 +280,14 @@ Task({
 })
 ```
 
-### doc-writer Agent
+#### doc-writer
 
 Creates and updates documentation.
 
 ```javascript
-Task({
+Agent({
   subagent_type: "doc-writer",
-  model: "sonnet",
+  description: "Document user API",
   prompt: `
     Document the user API endpoints.
     Include:
@@ -249,42 +302,45 @@ Task({
 
 ## Parallel Agent Patterns
 
+Independent agents run at the same time. Subagents that Claude spawns from the main conversation start in the background, so you can keep working while they run (up to 20 at once by default).
+
 ### Pattern 1: Analysis Swarm
 
 Launch 5 Explore agents for comprehensive analysis:
 
 ```javascript
 // All run in parallel
-Task({ subagent_type: "Explore", model: "haiku",
+Agent({ subagent_type: "Explore", description: "Map auth files",
   prompt: "Map auth file structure (thoroughness: quick)" })
-Task({ subagent_type: "Explore", model: "haiku",
+Agent({ subagent_type: "Explore", description: "Find JWT patterns",
   prompt: "Find JWT patterns (thoroughness: quick)" })
-Task({ subagent_type: "Explore", model: "haiku",
+Agent({ subagent_type: "Explore", description: "Analyze middleware",
   prompt: "Analyze middleware (thoroughness: medium)" })
-Task({ subagent_type: "Explore", model: "haiku",
+Agent({ subagent_type: "Explore", description: "Check auth tests",
   prompt: "Check auth tests (thoroughness: quick)" })
-Task({ subagent_type: "Explore", model: "haiku",
+Agent({ subagent_type: "Explore", description: "Review recent changes",
   prompt: "Review recent changes (thoroughness: quick)" })
 ```
 
 ### Pattern 2: Implementation + Review
 
-Build and verify simultaneously:
+Build, then verify in parallel:
 
 ```javascript
 // Phase 1: Implementation
-Task({
+Agent({
   subagent_type: "general-purpose",
+  description: "Implement profile feature",
   model: "sonnet",
   prompt: "Implement user profile feature"
 })
 
 // Phase 2: Parallel review (after Phase 1)
-Task({ subagent_type: "code-reviewer", model: "sonnet",
+Agent({ subagent_type: "code-reviewer", description: "Review code quality",
   prompt: "Review code quality" })
-Task({ subagent_type: "security-auditor", model: "sonnet",
+Agent({ subagent_type: "security-auditor", description: "Security review",
   prompt: "Security review" })
-Task({ subagent_type: "test-runner", model: "haiku",
+Agent({ subagent_type: "test-runner", description: "Run tests",
   prompt: "Run and analyze tests" })
 ```
 
@@ -294,30 +350,34 @@ Divide work across agents:
 
 ```javascript
 // Each agent handles one file
-Task({ subagent_type: "general-purpose", model: "sonnet",
-  prompt: "Refactor payment/checkout.ts to new pattern" })
-Task({ subagent_type: "general-purpose", model: "sonnet",
-  prompt: "Refactor payment/subscription.ts to new pattern" })
-Task({ subagent_type: "general-purpose", model: "sonnet",
-  prompt: "Refactor payment/refund.ts to new pattern" })
-Task({ subagent_type: "general-purpose", model: "sonnet",
-  prompt: "Update payment/types.ts for new pattern" })
+Agent({ subagent_type: "general-purpose", description: "Refactor checkout.ts",
+  model: "sonnet", prompt: "Refactor payment/checkout.ts to new pattern" })
+Agent({ subagent_type: "general-purpose", description: "Refactor subscription.ts",
+  model: "sonnet", prompt: "Refactor payment/subscription.ts to new pattern" })
+Agent({ subagent_type: "general-purpose", description: "Refactor refund.ts",
+  model: "sonnet", prompt: "Refactor payment/refund.ts to new pattern" })
+Agent({ subagent_type: "general-purpose", description: "Update payment types",
+  model: "sonnet", prompt: "Update payment/types.ts for new pattern" })
 ```
+
+Agents that might touch the same files shouldn't share a checkout. Pass `isolation: "worktree"` so each works in its own temporary git worktree (branched by default from your default branch, not your current `HEAD`), or run the bundled `/batch` skill, which splits a large change into independent units and runs each in its own worktree.
 
 ### Pattern 4: Bug Investigation
 
 Parallel hypothesis testing:
 
 ```javascript
-Task({ subagent_type: "Explore", model: "haiku",
+Agent({ subagent_type: "Explore", description: "Check session changes",
   prompt: "Search for session handling changes (thoroughness: quick)" })
-Task({ subagent_type: "Explore", model: "haiku",
+Agent({ subagent_type: "Explore", description: "Look for race conditions",
   prompt: "Check for race conditions (thoroughness: medium)" })
-Task({ subagent_type: "Explore", model: "haiku",
+Agent({ subagent_type: "Explore", description: "Review error logs",
   prompt: "Review error logs (thoroughness: quick)" })
-Task({ subagent_type: "Explore", model: "haiku",
+Agent({ subagent_type: "Explore", description: "Find timeout configs",
   prompt: "Find timeout configurations (thoroughness: quick)" })
-Task({ subagent_type: "debugger", model: "sonnet",
+
+// After the Explore results arrive, Claude passes them on
+Agent({ subagent_type: "debugger", description: "Find root cause",
   prompt: "Analyze most likely root cause from exploration" })
 ```
 
@@ -325,52 +385,56 @@ Task({ subagent_type: "debugger", model: "sonnet",
 
 | Task Type | Model | Cost | Speed |
 |-----------|-------|------|-------|
-| Quick search | Haiku 4.5 | $ | Fast |
-| Pattern matching | Haiku 4.5 | $ | Fast |
-| Test running | Haiku 4.5 | $ | Fast |
-| Simple docs | Haiku 4.5 | $ | Fast |
-| Code review | Sonnet 4.6 | $$ | Balanced |
-| Implementation | Sonnet 4.6 | $$ | Balanced |
-| Debugging | Sonnet 4.6 | $$ | Balanced |
-| Security audit | Sonnet/Opus | $$-$$$ | Balanced-Thorough |
-| Architecture | Opus 4.6 | $$$ | Thorough |
+| Quick search | Haiku 5.5 | $ | Fastest |
+| Pattern matching | Haiku 5.5 | $ | Fastest |
+| Test running | Haiku 5.5 | $ | Fastest |
+| Simple docs | Haiku 5.5 | $ | Fastest |
+| Code review | Sonnet 5.5 | $$ | Fast |
+| Implementation | Sonnet 5.5 | $$ | Fast |
+| Debugging | Sonnet 5.5 | $$ | Fast |
+| Security audit | Sonnet 5.5 / Opus 5.5 | $$-$$$ | Fast-Moderate |
+| Architecture | Opus 5.5 | $$$ | Moderate |
+| Demanding long-horizon work | Fable 5.1 | $$$$ | Slower |
 
-**Key trade-offs:**
-- Haiku 4.5: 2x faster, 1/3 cost vs Sonnet
-- Sonnet 4.6: Best coding performance
-- Opus 4.6: Highest intelligence, default Thinking Mode
+**Key trade-offs** (official descriptions; API prices per million input/output tokens):
+- Haiku 5.5: "for high-volume, latency-sensitive tasks such as classification, extraction, and routing" (from $0.10 / $0.50)
+- Sonnet 5.5: "the best combination of speed and intelligence" ($2 / $10)
+- Opus 5.5: "for long-running agentic coding and knowledge work" ($4 / $20); the default model in Claude Code on Pro, Max, Team, Enterprise, and API accounts, which means subagents inherit it unless you pick another
+- Fable 5.1: "for demanding reasoning and long-horizon agentic work"; never the default, select it with `/model fable` (on some plans it bills to usage credits)
 
 ## Background Agents
 
-For long-running tasks:
+Subagents that Claude spawns from the main conversation already start in the background. For long-running tasks:
 
 ```javascript
-Task({
+Agent({
   subagent_type: "security-auditor",
+  description: "Full security audit",
   model: "opus",
   prompt: "Comprehensive security audit of entire codebase",
   run_in_background: true
 })
 ```
 
-Check on background tasks:
-```javascript
-TaskOutput({ task_id: "...", block: false })
-```
+Check on background work:
+- `/tasks` lists background work, including recently finished subagents, with each subagent's model and effort level
+- The subagent panel below the prompt input shows running agents; open a row to read its transcript
+- `Ctrl+B` moves a running foreground task or agent to the background
+- Claude receives each background agent's result as a completion notification, then reports back
 
 ## Best Practices
 
 ### 1. Choose the Right Agent
 
 ```
-File search       → Explore (haiku)
-Implementation    → general-purpose (sonnet)
-Code quality      → code-reviewer (sonnet)
-Security          → security-auditor (sonnet/opus)
-Testing           → test-runner (haiku)
-Bugs              → debugger (sonnet)
-Cleanup           → refactor-assistant (sonnet)
-Docs              → doc-writer (haiku/sonnet)
+File search       → Explore (built-in)
+Implementation    → general-purpose (built-in, sonnet)
+Code quality      → code-reviewer (custom, sonnet)
+Security          → security-auditor (custom, sonnet/opus)
+Testing           → test-runner (custom, haiku/sonnet)
+Bugs              → debugger (custom, sonnet)
+Cleanup           → refactor-assistant (custom, sonnet)
+Docs              → doc-writer (custom, haiku/sonnet)
 ```
 
 ### 2. Keep Prompts Focused
@@ -387,9 +451,12 @@ Docs              → doc-writer (haiku/sonnet)
 
 ### 3. Provide Context
 
+A subagent starts with a fresh context window: it sees the prompt Claude writes for it (plus your CLAUDE.md, except for Explore and Plan), not your conversation.
+
 ```javascript
-Task({
+Agent({
   subagent_type: "general-purpose",
+  description: "Migrate user service",
   model: "sonnet",
   prompt: `
     Context: Migrating from REST to GraphQL.
@@ -406,9 +473,9 @@ Independent tasks should run simultaneously:
 
 ```javascript
 // These are independent - run in parallel
-Task({ ..., prompt: "Analyze file A" })
-Task({ ..., prompt: "Analyze file B" })
-Task({ ..., prompt: "Analyze file C" })
+Agent({ ..., prompt: "Analyze file A" })
+Agent({ ..., prompt: "Analyze file B" })
+Agent({ ..., prompt: "Analyze file C" })
 ```
 
 ### 5. Chain Dependent Tasks
@@ -457,7 +524,7 @@ Phase 3: Review (verify Phase 2)
 |-----------|--------|
 | Start with Explore | Use `thoroughness: medium` for most tasks |
 | Parallelize everything | Independent tasks = parallel agents |
-| Match model to task | Haiku for search, Sonnet for implementation |
+| Match model to task | Haiku for search, Sonnet for implementation, Opus for the hardest reasoning |
 | Keep prompts focused | One clear goal per agent |
 | Chain dependent work | Phase 1 → Phase 2 → Phase 3 |
 
@@ -465,6 +532,7 @@ Phase 3: Review (verify Phase 2)
 
 **Related:**
 - [Parallel Agents](../concepts/parallel-agents.md) - Deeper dive into parallel patterns
+- [Designing Agents](./designing-agents.md) - Write your own custom agents
 - [Multi-Agent Patterns](https://claude-world.com/articles/multi-agent-patterns) - Advanced orchestration
 
 Back to [README](../README.md)

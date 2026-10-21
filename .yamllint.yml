@@ -1,0 +1,15 @@
+# yamllint settings for the workflow templates and this repository's CI
+extends: default
+
+ignore: |
+  node_modules/
+
+rules:
+  # GitHub Actions workflows conventionally omit the "---" document marker
+  document-start: disable
+  # `on:` is a GitHub Actions key, not a boolean
+  truthy:
+    check-keys: false
+  # Templates embed prompts and conditions that read better on one line
+  line-length:
+    max: 160

@@ -40,6 +40,8 @@ Claude returns prioritized list with locations and suggested fixes.
 - Risk assessment"
 ```
 
+Do this in plan mode (`Shift+Tab` until the status bar shows `⏸ plan mode on`, or `/plan`) so Claude maps the affected code without editing anything until you approve the plan.
+
 ### Step 3: Execute with Tests
 
 ```
@@ -273,7 +275,8 @@ function hasRoleBasedAccess(user, resource) {
     employee: () => resource.owner === user.id,
   };
 
-  return accessRules[user.role]?.() ?? false;
+  // Own keys only: a role like "constructor" must not match Object.prototype
+  return Object.hasOwn(accessRules, user.role) && accessRules[user.role]();
 }
 ```
 
@@ -352,6 +355,8 @@ Create utils/index.ts to re-export for backwards compatibility.
 3. Commit after each successful change"
 ```
 
+Every prompt also creates a checkpoint: press `Esc` twice or run `/rewind` to undo Claude's edits from a step that went wrong. Checkpoints only track Claude's file edits, not shell commands, so they complement git rather than replace it.
+
 ### 3. Use Feature Flags for Risky Changes
 
 ```javascript
@@ -371,6 +376,14 @@ if (featureFlags.useNewPaymentProcessor) {
 - Migration path for callers
 - Performance impact (if any)"
 ```
+
+### 5. Isolate Large Refactors
+
+```bash
+claude --worktree refactor-payments
+```
+
+This starts a session in its own git worktree and branch, so a long refactor never collides with other work in your main checkout.
 
 ## Refactoring Anti-Patterns
 
@@ -417,10 +430,19 @@ if (featureFlags.useNewPaymentProcessor) {
 "Apply the repository pattern to all database access code"
 ```
 
+Once the pattern is proven on one module, `/batch apply the repository pattern to all database access code` splits the rest into 5 to 30 independent units and shows you a plan. After you approve, Claude spawns one background subagent per unit, each in its own git worktree, and each one implements its unit, runs the tests and publishes its change.
+
 ### Code Smell Detection
 ```
 "Identify code smells: long methods, feature envy, data clumps"
 ```
+
+### Built-in Cleanup Review
+```
+/simplify
+```
+
+Reviews your changed code for reuse of existing helpers, simplification, efficiency and abstraction level, then applies the fixes. It does not hunt for bugs; run `/code-review` for that.
 
 ### Before/After Metrics
 ```

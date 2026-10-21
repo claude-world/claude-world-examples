@@ -242,6 +242,8 @@ Claude：[自主規劃和執行]
 - Content Collections for articles
 ```
 
+> **現在的做法：** CLAUDE.md 只是指引，不會強制執行。要讓 Claude Code 在 `git push` 前真的詢問你，請在 `.claude/settings.json` 加入 `"ask": ["Bash(git push *)"]` 這類權限規則；請見 [CLAUDE.md 原則](../../concepts/zh-TW/claude-md-principles.md)。
+
 ### 2. Director Mode 心態
 
 **不要這樣**：
@@ -341,7 +343,7 @@ Session 5："Implement release monitor automation"
 - [claude-world.com](https://claude-world.com) - 完成的產品
 - [Director Mode 指南](https://claude-world.com/articles/director-mode)
 - [CLAUDE.md 設計](https://claude-world.com/articles/claude-md-design)
-- [GitHub Actions 範例](../examples/github-actions-automation.md)
+- [GitHub Actions 範例](../../examples/zh-TW/github-actions-automation.md)
 
 ---
 

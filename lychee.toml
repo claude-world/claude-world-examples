@@ -1,0 +1,26 @@
+# Link checking for every Markdown file (run by .github/workflows/validate.yml).
+# Local run: lychee --config lychee.toml './**/*.md'
+
+max_retries = 3
+retry_wait_time = 5
+timeout = 30
+max_concurrency = 8
+
+# 429 means the host is rate limiting the checker, not that the page is gone
+accept = ["200..=299", "429"]
+
+# localhost, loopback and private network addresses used in examples
+exclude_all_private = true
+
+exclude = [
+  # Placeholder hosts used in examples and templates
+  '^https?://([a-z0-9-]+\.)*example\.(com|org|net)',
+  '^https?://([a-z0-9-]+\.)*your-[a-z0-9.-]+',
+  '^https?://([a-z0-9-]+\.)*yourdomain\.',
+  # Hosts that reject automated checkers (login walls, bot protection)
+  '^https?://(www\.)?(twitter|x)\.com/',
+  '^https?://(www\.)?linkedin\.com/',
+  # This repository's own release tags and workflow badges: the README links to
+  # them in the pull request that prepares a release, before they exist
+  '^https://github\.com/claude-world/claude-world-examples/(releases/tag/|actions/workflows/)',
+]

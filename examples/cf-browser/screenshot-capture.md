@@ -8,24 +8,36 @@ Static HTTP fetching misses client-rendered content, layout regressions, and hyd
 
 ## Project MCP Configuration
 
-Add a project-scoped server to `.mcp.json`:
+Install [`cf-browser`](https://github.com/claude-world/cf-browser) and its MCP server, and export a Cloudflare API token with **Browser Rendering: Edit** permission:
+
+```bash
+python -m pip install cf-browser cf-browser-mcp
+export CF_ACCOUNT_ID="your-account-id"
+export CF_API_TOKEN="your-browser-rendering-token"
+```
+
+Then add the server to `.mcp.json`. The `${VAR}` references keep the token out of the file:
 
 ```json
 {
   "mcpServers": {
     "cf-browser": {
-      "command": "<cf-browser-mcp-command>",
-      "args": ["<provider-arg-1>", "<provider-arg-2>"],
+      "type": "stdio",
+      "command": "python3",
+      "args": ["-m", "cf_browser_mcp.server"],
       "env": {
-        "CLOUDFLARE_ACCOUNT_ID": "${CLOUDFLARE_ACCOUNT_ID}",
-        "CLOUDFLARE_API_TOKEN": "${CLOUDFLARE_API_TOKEN}"
+        "CF_BROWSER_MODE": "direct",
+        "CF_ACCOUNT_ID": "${CF_ACCOUNT_ID}",
+        "CF_API_TOKEN": "${CF_API_TOKEN}"
       }
     }
   }
 }
 ```
 
-Replace the command and args with the launcher from your `cf-browser` provider. The prompts below assume the server exposes `browser_screenshot` and `browser_scrape`.
+For the Worker mode (needed for interaction tools such as `browser_click`), run `bash setup.sh` from a clone of the repository; it deploys the Worker and registers the server with Claude Code for you.
+
+The prompts below use `browser_screenshot` and `browser_scrape`.
 
 ## Basic Workflow
 

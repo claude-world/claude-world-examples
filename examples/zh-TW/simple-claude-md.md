@@ -1,17 +1,17 @@
 # 簡單的 CLAUDE.md 範本
 
-一個精簡但有效的 CLAUDE.md，你可以根據任何專案來調整。
+一個精簡但有效的 CLAUDE.md，你可以根據任何專案來調整。把它存成專案根目錄的 `CLAUDE.md`（或 `.claude/CLAUDE.md`）並 commit 進 git。如果不想從空白開始，可以先執行 `/init` 讓 Claude 根據程式碼庫產生草稿，再精簡成這個樣子。
 
 ## 範本
 
-```markdown
+````markdown
 # [你的專案名稱]
 
 > 簡短描述這個專案做什麼
 
 ## 技術棧
 
-- **框架**: [例如 Next.js 14, Express, Django]
+- **框架**: [例如 Next.js 16, Express, Django]
 - **資料庫**: [例如 PostgreSQL, MongoDB, SQLite]
 - **語言**: [例如 TypeScript, Python, Go]
 
@@ -71,7 +71,7 @@ npm run lint    # 檢查程式碼風格
 // components/FeatureName/FeatureName.tsx - 元件
 // components/FeatureName/FeatureName.test.tsx - 測試
 ```
-```
+````
 
 ## 自訂技巧
 
@@ -81,7 +81,7 @@ npm run lint    # 檢查程式碼風格
 ```markdown
 ## 狀態管理
 
-- 使用 React Query 處理伺服器狀態
+- 使用 TanStack Query 處理伺服器狀態
 - 使用 Zustand 處理客戶端狀態
 - 避免 prop drilling - 使用 context
 
@@ -142,6 +142,14 @@ npm run lint    # 檢查程式碼風格
 - Claude 應該遵循的模式 → 記錄下來
 - Claude 應該知道的決策 → 寫下來
 
+檔案變長時，控制在約 200 行以內：
+
+- 只適用於某個目錄或檔案類型的指引 → 放進 `.claude/rules/` 的規則，搭配 `paths:` frontmatter
+- 多步驟流程（部署、發布）→ 做成 `.claude/skills/` 裡的 skill
+- 絕對不能違反的規則 → `.claude/settings.json` 的 `permissions` 或 hook（CLAUDE.md 是指引，不是強制）
+
+編輯完後，執行 `/context` 確認 Claude 已載入這個檔案。
+
 ---
 
-另見：[CLAUDE.md 原則](../concepts/claude-md-principles.md)
+另見：[CLAUDE.md 原則](../../concepts/zh-TW/claude-md-principles.md) | [依框架分類的 CLAUDE.md 模板](../../templates/zh-TW/claude-md-templates.md)

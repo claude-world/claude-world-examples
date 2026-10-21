@@ -50,21 +50,21 @@ This guide covers the most common mistakes and how to fix them.
 - Redux for state management
 - Jest for testing
 
-# Reality: Project migrated to React 18 + hooks + Zustand 6 months ago
+# Reality: Project migrated to React 19 + hooks + Zustand 6 months ago
 ```
 
 **Why it fails**: Claude generates code for the wrong version, causing constant corrections.
 
-**Fix**: Review CLAUDE.md quarterly or after major changes:
+**Fix**: Review CLAUDE.md quarterly or after major changes, and run `/doctor prompt-audit` to flag references to files or commands that no longer exist:
 
 ```markdown
 ## Tech Stack
-- React 18.2 (functional components + hooks only)
-- Zustand 4.x for client state
-- React Query for server state
+- React 19 (functional components + hooks only)
+- Zustand 5.x for client state
+- TanStack Query v5 for server state
 - Vitest for testing (migrated from Jest in 2024)
 
-Last updated: 2025-01-15
+Last updated: 2026-10-01
 ```
 
 ### 3. The Missing Why
@@ -125,6 +125,8 @@ Last updated: 2025-01-15
 Priority: Performance rules override style rules for above-the-fold content.
 ```
 
+Conflicts also hide across files. Nested CLAUDE.md files, `.claude/rules/`, and your user-level instructions all load together and none of them overrides the others, so Claude may follow either side. `/doctor prompt-audit` reports instruction files that contradict each other.
+
 ### 5. The Kitchen Sink
 
 **Problem**: CLAUDE.md is 2000+ lines covering every possible scenario.
@@ -134,19 +136,20 @@ Priority: Performance rules override style rules for above-the-fold content.
 - Every API endpoint specification
 - Full database schema
 - Complete deployment procedures
+- File-by-file descriptions of the codebase
 - Historical decisions from 3 years ago
 - Meeting notes
 ```
 
-**Why it fails**: Claude's context window fills up with low-value information, leaving less room for actual work.
+**Why it fails**: CLAUDE.md loads in full every session. Low-value information fills the context window, and adherence drops: the rules that matter get lost in the noise.
 
-**Fix**: Keep CLAUDE.md focused; link to detailed docs:
+**Fix**: Keep each CLAUDE.md under ~200 lines. Link to detailed docs, and turn procedures into skills:
 
 ```markdown
 # Good Example
 
 ## Quick Reference
-- Tech: Next.js 14, PostgreSQL, Prisma
+- Tech: Next.js 16, PostgreSQL, Prisma
 - Commands: `pnpm dev`, `pnpm test`, `pnpm db:migrate`
 
 ## Core Guidelines
@@ -155,8 +158,23 @@ Priority: Performance rules override style rules for above-the-fold content.
 ## Detailed Documentation
 - API spec: See `/docs/api/README.md`
 - Database: See `/prisma/README.md`
-- Deployment: See `/docs/deployment.md`
+- Deployment: Use the `/deploy` skill (`.claude/skills/deploy/SKILL.md`)
 ```
+
+Guidance that only matters in one area belongs in `.claude/rules/`. A rule with `paths:` frontmatter loads only when Claude works with matching files, for example `.claude/rules/database.md`:
+
+```markdown
+---
+paths:
+  - "prisma/**"
+---
+
+# Database Rules
+- Every schema change needs a migration (`pnpm db:migrate`)
+- Never edit applied migrations in `prisma/migrations/`
+```
+
+Don't reach for `@path` imports to shrink the file: imported files load at launch too. A plain path reference, as above, lets Claude open the doc only when it needs it.
 
 ### 6. The No-Permissions Trap
 
@@ -196,6 +214,29 @@ Priority: Performance rules override style rules for above-the-fold content.
 - Deleting test files
 ```
 
+> **CLAUDE.md doesn't grant or block anything.** These lists steer Claude's judgment; Claude Code enforces tool access separately, through `permissions` in `.claude/settings.json` and the permission mode you choose (`Shift+Tab`, or `defaultMode` in settings). The same intent maps onto three rule types, checked deny first, then ask, then allow:
+
+```json
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(pnpm test *)",
+      "Bash(pnpm lint *)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Edit(src/auth/**)"
+    ],
+    "deny": [
+      "Bash(git push --force *)"
+    ]
+  }
+}
+```
+
+Rules match the command as written (`git push origin main --force` slips past the deny rule but still hits the `ask` rule), so pair a narrow deny with a broader ask. For checks a pattern can't express, use a PreToolUse [hook](./hooks-basics.md).
+
 ### 7. The Implicit Assumption
 
 **Problem**: Assumes Claude knows things that aren't documented.
@@ -212,11 +253,11 @@ Priority: Performance rules override style rules for above-the-fold content.
 
 **Fix**: Make everything explicit:
 
-```markdown
+````markdown
 ## API Guidelines
 
 ### Response Format
-```json
+```jsonc
 {
   "success": true|false,
   "data": { ... } | null,
@@ -232,13 +273,13 @@ if (!hasPermission(user, 'resource:action')) {
   throw new ForbiddenError('ERR_PERM_001');
 }
 ```
-```
+````
 
 ### 8. The Stale Examples
 
 **Problem**: Code examples use deprecated patterns or old syntax.
 
-```markdown
+````markdown
 # Bad Example
 ## Component Pattern
 ```jsx
@@ -253,12 +294,13 @@ class UserProfile extends React.Component {
   // ...
 }
 ```
+````
 
 **Why it fails**: Claude copies the example pattern, generating outdated code.
 
 **Fix**: Update examples when patterns change:
 
-```markdown
+````markdown
 ## Component Pattern
 ```tsx
 // Standard pattern for data-fetching components
@@ -272,7 +314,7 @@ export function UserProfile({ userId }: { userId: string }) {
   return <ProfileCard user={user} />;
 }
 ```
-```
+````
 
 ## Diagnostic Checklist
 
@@ -287,6 +329,8 @@ When Claude keeps asking the same questions, use this checklist:
 | "Where should this go?" | Missing project structure | Add directory guide |
 | "Can I install X?" | Missing dependency policy | Add approved deps list |
 
+If Claude asks a question that CLAUDE.md already answers, the phrasing is probably ambiguous. If it keeps breaking a rule that's written down, the file is probably too long and the rule is getting lost, or the rule needs enforcement (a permission rule or hook) rather than prose. Run `/context` to confirm the file loaded at all.
+
 ## The CLAUDE.md Health Check
 
 Run this periodic check:
@@ -296,11 +340,12 @@ Run this periodic check:
 
 1. [ ] Tech stack matches actual dependencies
 2. [ ] Examples use current patterns
-3. [ ] No contradictory guidelines
-4. [ ] Permissions are balanced (not all restrictions)
-5. [ ] Under 500 lines (link to detailed docs)
+3. [ ] No contradictory guidelines (`/doctor prompt-audit` helps)
+4. [ ] Permissions are balanced (not all restrictions); hard limits live in settings.json or hooks
+5. [ ] Under ~200 lines (path-specific rules in `.claude/rules/`, procedures in skills)
 6. [ ] "Last updated" date is current
 7. [ ] New team members can understand it
+8. [ ] `/context` lists the expected files under Memory files
 ```
 
 ## Quick Fixes
@@ -344,8 +389,8 @@ A: Throw typed errors from `@/lib/errors`. Never use generic Error().
 2. **Stay current** - Update when the project changes
 3. **Explain why** - Context helps Claude make better decisions
 4. **Resolve conflicts** - Prioritize when rules clash
-5. **Keep it focused** - Link to detailed docs instead of embedding
-6. **Balance permissions** - Enable, don't just restrict
+5. **Keep it focused** - Under ~200 lines; rules, skills, and links for the rest
+6. **Balance permissions** - Enable, don't just restrict; enforce hard limits in settings.json
 7. **Make it explicit** - No "as usual" or "standard way"
 8. **Update examples** - Code samples must match current patterns
 

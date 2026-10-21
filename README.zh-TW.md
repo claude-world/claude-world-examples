@@ -4,23 +4,38 @@
 
 [![Website](https://img.shields.io/badge/網站-claude--world.com-blue)](https://claude-world.com)
 [![Discord](https://img.shields.io/badge/Discord-加入社群-7289da)](https://discord.gg/rBtHzSD288)
-[![Version](https://img.shields.io/badge/版本-1.0.0-green)](https://github.com/claude-world/claude-world-examples/releases/tag/v1.0.0)
+[![Version](https://img.shields.io/badge/版本-1.3.0-green)](https://github.com/claude-world/claude-world-examples/releases/tag/v1.3.0)
+[![Validate](https://github.com/claude-world/claude-world-examples/actions/workflows/validate.yml/badge.svg)](https://github.com/claude-world/claude-world-examples/actions/workflows/validate.yml)
+
+[English](./README.md)
 
 ---
 
-**v1.0.0 已發布！** 網站已上線 [claude-world.com](https://claude-world.com) - 使用 Claude Code + Director Mode 在 48 小時內從零到上線。
+**v1.3.0（2026-10-21）：** 所有概念、範例、指南與模板都已更新為 Claude Code 2.1.x、Claude 5.5 模型與 `anthropics/claude-code-action@v1`，CI 也會驗證程式碼範例與連結。詳見 [CHANGELOG](./CHANGELOG.md)。
 
 ---
 
 ## 什麼是 Claude World？
 
-Claude World 是一個致力於幫助開發者精通 **Claude Code** 的社群 - Anthropic 官方的 AI 輔助軟體開發 CLI 工具。
+Claude World 是一個致力於幫助開發者精通 **Claude Code** 的社群 - Anthropic 官方的 AI 輔助軟體開發 CLI 工具。這個 repository 是 [claude-world.com](https://claude-world.com) 的配套資源：網站文章解釋觀念，這裡的檔案則是可以直接複製使用的範例。
 
 我們專注於：
 - **Director Mode** - 從「動手做的開發者」轉變為「團隊導演」的思維轉換
 - **高效工作流程** - 平行代理、最少干擾、自主執行
 - **最佳實踐** - 來自真實生產專案的實戰經驗
-- **進階功能** - Hooks、MCP、Memory、Extended Thinking 等
+- **進階功能** - Hooks、MCP、skills、subagents、memory、effort 等級等
+
+## 範例對應的版本
+
+| 項目 | 版本 |
+|------|------|
+| Claude Code | 2.1.x（以 2.1.305 驗證） |
+| 模型 | Claude Opus 5.5、Sonnet 5.5、Haiku 5.5、Fable 5.1 |
+| GitHub Action | `anthropics/claude-code-action@v1` |
+| Claude API | Messages API，`anthropic-version: 2023-06-01` |
+| Workflow 模板 | Node.js 24、`actions/checkout@v7` |
+
+`claude-sonnet-4-20250514` 等已退役的模型 ID 已無法使用；所有範例都改用目前的 ID。
 
 ## 目錄結構
 
@@ -33,6 +48,8 @@ claude-world-examples/
 └── case-studies/       # 真實專案案例研究
 ```
 
+大多數頁面在旁邊的 `zh-TW/` 資料夾中有繁體中文翻譯。
+
 ## 內容概覽
 
 ### 核心概念
@@ -43,9 +60,9 @@ claude-world-examples/
 | [CLAUDE.md 原則](./concepts/zh-TW/claude-md-principles.md) | 如何撰寫有效的專案指令 | 初級 |
 | [Hooks 基礎](./concepts/zh-TW/hooks-basics.md) | 自動化政策與防護機制 | 初級 |
 | [MCP 基礎](./concepts/zh-TW/mcp-basics.md) | 用外部工具和資料庫擴展 Claude | 初級 |
-| [Memory 系統](./concepts/zh-TW/memory-system.md) | 建立持久的專案智慧 | 初級 |
+| [Memory 系統](./concepts/zh-TW/memory-system.md) | CLAUDE.md、auto memory 與 Memory MCP | 初級 |
 | [CLAUDE.md 反模式](./concepts/zh-TW/claude-md-anti-patterns.md) | 常見錯誤及修正方法 | 中級 |
-| [平行代理](./concepts/zh-TW/parallel-agents.md) | 同時執行 5 個代理加速工作 | 中級 |
+| [平行代理](./concepts/zh-TW/parallel-agents.md) | 平行執行 subagents 加速工作 | 中級 |
 | [AI 輔助工作流程](./concepts/zh-TW/ai-assisted-workflow.md) | 將 Claude Code 作為生產力倍增器 | 中級 |
 | [多 AI 工作流程](./concepts/zh-TW/multi-ai-workflow.md) | 協調 Claude、Codex 和 Gemini CLI | 高級 |
 
@@ -59,7 +76,11 @@ claude-world-examples/
 | [重構模式](./examples/zh-TW/refactoring-patterns.md) | 用 Claude 系統化改善程式碼 | 程式碼品質 |
 | [Hooks 模式](./examples/zh-TW/hooks-patterns.md) | 生產環境就緒的 hook 配置 | 自動化 |
 | [MCP 設定](./examples/zh-TW/mcp-setup.md) | 完整的 MCP 配置範例 | 整合 |
-| [GitHub Actions 自動化](./examples/zh-TW/github-actions-automation.md) | 用 Claude API 建立自動化工作流程 | CI/CD |
+| [Trend Pulse：基本趨勢查詢](./examples/trend-pulse/basic-trending.md) | 用 `get_trending` 與 `search_trends` 查詢即時話題（英文） | 研究 |
+| [Trend Pulse：內容簡報](./examples/trend-pulse/content-brief.md) | 把趨勢訊號變成內容簡報（英文） | 內容策略 |
+| [CF Browser：截圖](./examples/cf-browser/screenshot-capture.md) | 用瀏覽器 MCP 工具擷取並檢查渲染後的頁面（英文） | QA |
+| [CF Browser：頁面擷取](./examples/cf-browser/page-scraping.md) | 透過瀏覽器 session 擷取 JavaScript 渲染的頁面（英文） | 網頁資料 |
+| [GitHub Actions 自動化](./examples/zh-TW/github-actions-automation.md) | Claude API 工作流程與 Claude Code GitHub Action | CI/CD |
 | [多語言 Astro](./examples/zh-TW/multi-language-astro.md) | 完整的多語言網站設定 | i18n |
 | [Supabase + Cloudflare](./examples/supabase-cloudflare-integration.md) | 免費託管與資料庫的全端整合 | 全端 |
 | [Newsletter 系統](./examples/newsletter-system.md) | 完整的多語言電子報架構 | 電子郵件 |
@@ -73,14 +94,14 @@ claude-world-examples/
 
 | 指南 | 說明 | 時間 |
 |------|------|------|
-| [Agents 指南](./guides/zh-TW/agents-guide.md) | 所有 Claude Code agents 的完整指南 | 25 分鐘 |
-| [Extended Thinking](./guides/zh-TW/extended-thinking.md) | 用 thinking mode 解鎖更深層推理 | 15 分鐘 |
+| [Agents 指南](./guides/zh-TW/agents-guide.md) | 內建與自訂 subagents，從 Explore 到你自己的 agents | 25 分鐘 |
+| [Extended Thinking](./guides/zh-TW/extended-thinking.md) | 強度等級、`ultrathink` 與何時需要更深入的推理 | 15 分鐘 |
 | [快速參考卡](./guides/zh-TW/quick-reference.md) | 快速查閱的單頁視覺指南 | 5 分鐘 |
 | [生產環境準備](./guides/zh-TW/production-readiness.md) | 上線前的檢查清單 | 15 分鐘 |
-| [安全最佳實踐](./guides/zh-TW/security-best-practices.md) | 從一開始就建立安全的應用程式 | 20 分鐘 |
+| [安全最佳實踐](./guides/zh-TW/security-best-practices.md) | 建立安全的應用程式，並鎖定 Claude Code 本身 | 20 分鐘 |
 | [規格驅動開發](./guides/zh-TW/specification-driven-development.md) | 先寫規格，可靠地實作 | 30 分鐘 |
-| [設計自訂 Agents](./guides/designing-agents.md) | 建立專案專屬的自訂代理 | 20 分鐘 |
-| [設計自訂 Skills](./guides/designing-skills.md) | 建立可重用的斜線指令工作流程 | 20 分鐘 |
+| [設計自訂 Agents](./guides/designing-agents.md) | 建立專案專屬的自訂 subagents（英文） | 20 分鐘 |
+| [設計自訂 Skills](./guides/designing-skills.md) | 建立可重用的 skills 與斜線指令（英文） | 20 分鐘 |
 
 ### 模板
 
@@ -88,7 +109,7 @@ claude-world-examples/
 |------|------|
 | [依框架分類的 CLAUDE.md](./templates/zh-TW/claude-md-templates.md) | React、Next.js、Python、Go 等即用模板 |
 | [Release 監控工作流程](./templates/release-monitor-workflow.yml) | 自動監控 release 的 GitHub Actions 工作流程 |
-| [GitHub Actions 自動化套件](./templates/github-actions-suite/) | 完整自動化套件（CI、監控、社群、電子報） |
+| [GitHub Actions 自動化套件](./templates/github-actions-suite/) | Claude Code `@claude` 助手與 PR 審查，以及 CI、監控、社群、電子報工作流程 |
 
 ### 案例研究
 
@@ -98,7 +119,7 @@ claude-world-examples/
 
 ## claude-world.com 涵蓋的主題
 
-網站涵蓋這些進階主題（範例即將推出）：
+網站深入介紹這些進階主題：
 
 | 主題 | 文章 |
 |------|------|
@@ -123,10 +144,18 @@ claude-world-examples/
 ### 1. 安裝 Claude Code
 
 ```bash
-npm install -g @anthropic-ai/claude-code
+# macOS、Linux、WSL
+curl -fsSL https://claude.ai/install.sh | bash
+
+# Homebrew
+brew install --cask claude-code
 ```
 
+Windows 請在 PowerShell 執行 `irm https://claude.ai/install.ps1 | iex`，或使用 `winget install Anthropic.ClaudeCode`。用 npm 安裝仍可使用，但已不建議。之後可用 `claude update` 更新。
+
 ### 2. 在專案中建立 CLAUDE.md
+
+在 Claude Code 中執行 `/init`，根據你的程式碼庫自動產生，或從以下內容開始：
 
 ```markdown
 # 專案指令
@@ -148,6 +177,18 @@ npm install -g @anthropic-ai/claude-code
 - 推送到遠端
 - 刪除檔案
 - 修改環境變數
+```
+
+CLAUDE.md 只是指引。要真正強制執行「需要確認」清單，請在 `.claude/settings.json` 加入權限規則：
+
+```json
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "ask": ["Bash(git push *)", "Bash(rm *)"],
+    "deny": ["Read(./.env)", "Read(./.env.*)"]
+  }
+}
 ```
 
 ### 3. 啟動 Claude Code
@@ -194,11 +235,22 @@ Claude：[立即啟動 3 個平行代理]
 
 | 模型 | 最適合 | 速度 | 成本 |
 |------|--------|------|------|
-| **Haiku 4.5** | Explore agents、檔案搜尋、模式匹配 | 快 | 低 |
-| **Sonnet 4.6** | 實作、程式碼審查、重構 | 平衡 | 中 |
-| **Opus 4.6** | 架構決策、安全審計、複雜推理 | 深入 | 高 |
+| **Haiku 5.5** | 大量、低延遲的工作：分類、擷取、快速搜尋 | 最快 | 低 |
+| **Sonnet 5.5** | 實作、程式碼審查、重構 | 快 | 中 |
+| **Opus 5.5** | 架構決策、安全審計、長時間的 agentic 工作 | 中等 | 高 |
+| **Fable 5.1** | 高難度推理與長期的 agentic 工作；需要明確選擇 | 較慢 | 最高 |
 
-**快速提示**：按 `Option+P`（macOS）或 `Alt+P`（Windows/Linux）在提示時切換模型。
+**快速提示**：用 `/model` 切換模型（或在 macOS 按 `Option+P`、Windows/Linux 按 `Alt+P`），用 `/effort` 設定推理深度。在 Claude API 中請使用完整 ID：`claude-haiku-5-5`、`claude-sonnet-5-5`、`claude-opus-5-5`、`claude-fable-5-1`。
+
+## 品質檢查
+
+每個 pull request 都會執行 [Validate](./.github/workflows/validate.yml) 工作流程：
+
+- 對每個 workflow 模板執行 **yamllint** 與 **actionlint**（含 shellcheck）
+- **程式碼區塊：** 每個 `json` 程式碼區塊都必須是有效的 JSON，每個 `yaml` 區塊都必須能解析，Markdown 中的完整 workflow 也會用 actionlint 檢查
+- **lychee** 檢查每個 Markdown 檔案中的所有連結（每週也會執行，及早發現失效連結）
+
+如何在本機執行相同的檢查，請見 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
 ## 社群
 
@@ -219,6 +271,10 @@ Claude：[立即啟動 3 個平行代理]
 
 如有討論和問題，歡迎加入我們的 [Discord 社群](https://discord.gg/rBtHzSD288)。
 
+## 安全
+
+發現範例或模板中可能危害複製使用者的問題？請私下回報，詳見 [SECURITY.md](./SECURITY.md)。
+
 ## 授權
 
 MIT License - 請參閱 [LICENSE](./LICENSE)
@@ -227,4 +283,4 @@ MIT License - 請參閱 [LICENSE](./LICENSE)
 
 由 Claude World 社群使用 Claude Code 建立。
 
-*最後更新：2026-01-13*
+*最後更新：2026-10-21*
