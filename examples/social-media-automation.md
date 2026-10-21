@@ -82,10 +82,18 @@ THREADS_ACCESS_TOKEN  → Long-lived access token (60 days)
 **Token Refresh**: Threads tokens expire. Set up a refresh workflow:
 
 ```bash
-# Refresh token before expiry
-curl -X GET \
-  "https://graph.threads.net/refresh_access_token?grant_type=th_refresh_token&access_token=${THREADS_ACCESS_TOKEN}"
+# Refresh token before expiry.
+# Meta's refresh endpoint takes the token as a query parameter, so use
+# --get --data-urlencode rather than putting it in the URL string: that
+# keeps it out of your shell history, and out of `set -x` / CI step logs.
+curl -X GET --get \
+  --data-urlencode "grant_type=th_refresh_token" \
+  --data-urlencode "access_token=${THREADS_ACCESS_TOKEN}" \
+  https://graph.threads.net/refresh_access_token
 ```
+
+> Treat the refreshed token as a secret: write it straight back to your
+> secret store and never `echo` it into a workflow log.
 
 ---
 
