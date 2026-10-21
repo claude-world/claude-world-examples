@@ -12,6 +12,8 @@ Many modern pages render the useful content after hydration. A normal fetch may 
 2. Use `browser_scrape` to extract the rendered text or structured elements.
 3. Ask Claude for a structured result instead of a loose summary.
 
+Set up the server first; see [CF Browser: Screenshot Capture](./screenshot-capture.md#project-mcp-configuration).
+
 ## Example Prompts for Claude Code
 
 ### 1. Scrape a JS-rendered search page

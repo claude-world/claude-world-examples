@@ -32,7 +32,7 @@ Requirements:
 
 ### Step 2: Let Claude Analyze
 
-Claude launches parallel agents to understand context:
+Claude launches parallel subagents (usually the built-in read-only Explore agent) to understand context. For a large feature, ask for it directly: "research these areas in parallel using separate subagents."
 
 ```
 Agent 1: Analyze existing EmailService
@@ -44,7 +44,7 @@ Agent 5: Look at email templates if any
 
 ### Step 3: Review the Plan
 
-Claude proposes implementation:
+Run steps 2 and 3 in plan mode: before sending the request, press `Shift+Tab` until the status bar shows `⏸ plan mode on`, or type `/plan`. Claude researches without editing files and proposes an implementation; press `Ctrl+G` to edit the plan in your text editor before you approve it.
 
 ```
 "Here's my implementation plan:
@@ -86,6 +86,8 @@ Claude: [Implements everything]
 - Runs tests to verify
 ```
 
+Approving the plan exits plan mode. Every prompt creates a checkpoint, so if the implementation heads the wrong way, press `Esc` twice or run `/rewind` to restore code and conversation. To build a second feature at the same time without edits colliding, start another session in its own git worktree with `claude --worktree <name>`.
+
 ### Step 5: Review and Iterate
 
 ```
@@ -108,6 +110,8 @@ Tests: 12 new tests, all passing.
 
 Ready for review."
 ```
+
+Before opening the PR, run `/code-review` (alias `/review`) to check the diff for correctness bugs in a fresh subagent, then iterate on what it finds.
 
 ## Example: Complete Feature Request
 

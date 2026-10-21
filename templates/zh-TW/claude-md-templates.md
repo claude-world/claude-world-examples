@@ -5,20 +5,22 @@
 ## 如何使用這些模板
 
 1. 複製適合你技術棧的模板
-2. 貼到專案根目錄的 `CLAUDE.md`
+2. 貼到專案根目錄的 `CLAUDE.md`（或 `.claude/CLAUDE.md`）
 3. 自訂括號內的 `[佔位符]`
-4. 移除不適用的章節
+4. 移除不適用的章節；如果是既有的程式碼庫，也刪掉 Claude 自己看得到的內容（例如完整的目錄樹），保留慣例和容易踩雷的地方
 5. 新增專案特定規則
+
+已經執行過 `/init`？只合併模板中能補充新資訊的章節。結果控制在約 200 行以內，並執行 `/context` 確認已載入。
 
 ## 模板
 
 ### React + TypeScript
 
-```markdown
+````markdown
 # [專案名稱]
 
 ## 技術棧
-- React 18+ with TypeScript
+- React 19 with TypeScript
 - [狀態管理: Redux Toolkit / Zustand / Context]
 - [樣式: Tailwind CSS / styled-components / CSS Modules]
 - [測試: Vitest / Jest + React Testing Library]
@@ -52,7 +54,7 @@ src/
 ### 狀態管理
 - 本地 state 用於純 UI 狀態
 - 全域 state 用於共享資料
-- Server state 使用 [React Query / SWR]
+- Server state 使用 [TanStack Query / SWR]
 
 ## 測試
 - 執行測試：`npm test`
@@ -66,17 +68,17 @@ npm run build    # 正式環境建置
 npm run test     # 執行測試
 npm run lint     # Lint 檢查
 ```
-```
+````
 
 ---
 
-### Next.js 14+ (App Router)
+### Next.js 16 (App Router)
 
-```markdown
+````markdown
 # [專案名稱]
 
 ## 技術棧
-- Next.js 14+ with App Router
+- Next.js 16 with App Router
 - TypeScript strict mode
 - [資料庫: Prisma / Drizzle + PostgreSQL]
 - [驗證: NextAuth.js / Clerk]
@@ -135,19 +137,19 @@ npm run lint     # ESLint 檢查
 - `DATABASE_URL`
 - `NEXTAUTH_SECRET`
 - `NEXTAUTH_URL`
-```
+````
 
 ---
 
 ### Python + FastAPI
 
-```markdown
+````markdown
 # [專案名稱]
 
 ## 技術棧
 - Python 3.11+
 - FastAPI with Pydantic v2
-- SQLAlchemy 2.0 + PostgreSQL
+- SQLAlchemy 2.x + PostgreSQL
 - Alembic 遷移
 - pytest 測試
 
@@ -211,18 +213,18 @@ mypy app/
 - `DATABASE_URL`
 - `SECRET_KEY`
 - `ENVIRONMENT` (development/production)
-```
+````
 
 ---
 
 ### Node.js + Express + TypeScript
 
-```markdown
+````markdown
 # [專案名稱]
 
 ## 技術棧
-- Node.js 20+ with TypeScript
-- Express.js
+- Node.js 24 LTS with TypeScript
+- Express 5
 - [資料庫: Prisma / TypeORM + PostgreSQL]
 - Jest 測試
 - Zod 驗證
@@ -285,17 +287,17 @@ npm run lint     # ESLint 檢查
 - `DATABASE_URL`
 - `JWT_SECRET`
 - `NODE_ENV`
-```
+````
 
 ---
 
 ### Go + Gin/Echo
 
-```markdown
+````markdown
 # [專案名稱]
 
 ## 技術棧
-- Go 1.21+
+- Go 1.26+
 - [框架: Gin / Echo]
 - PostgreSQL with pgx
 - golang-migrate 遷移
@@ -351,8 +353,8 @@ go test ./...
 go test -cover ./...
 
 # 遷移
-migrate -path migrations -database $DATABASE_URL up
-migrate -path migrations -database $DATABASE_URL down 1
+migrate -path migrations -database "$DATABASE_URL" up
+migrate -path migrations -database "$DATABASE_URL" down 1
 ```
 
 ## 環境變數
@@ -361,20 +363,20 @@ migrate -path migrations -database $DATABASE_URL down 1
 - `DATABASE_URL`
 - `JWT_SECRET`
 - `ENVIRONMENT`
-```
+````
 
 ---
 
 ### Vue 3 + TypeScript
 
-```markdown
+````markdown
 # [專案名稱]
 
 ## 技術棧
 - Vue 3 with Composition API
 - TypeScript
 - [狀態: Pinia]
-- [路由: Vue Router 4]
+- [路由: Vue Router 5]
 - [UI: Vuetify / PrimeVue / Naive UI]
 - Vite
 
@@ -417,17 +419,17 @@ npm run preview  # 預覽正式環境
 npm run test     # 執行測試
 npm run lint     # Lint 檢查
 ```
-```
+````
 
 ---
 
 ### Astro + React/Vue
 
-```markdown
+````markdown
 # [專案名稱]
 
 ## 技術棧
-- Astro 4+
+- Astro 7
 - [UI 框架: React / Vue / Svelte]
 - Tailwind CSS
 - [CMS: Contentful / Sanity / MDX]
@@ -453,7 +455,7 @@ public/              # 靜態資源
 - 折疊下方內容優先使用 `client:visible`
 
 ### Content Collections
-- 在 `src/content/config.ts` 定義 schemas
+- 在 `src/content.config.ts` 定義 collections，每個都要有 loader（例如 `glob()`）
 - 使用型別安全查詢
 - 驗證 frontmatter
 
@@ -467,19 +469,19 @@ public/              # 靜態資源
 npm run dev      # 開發伺服器
 npm run build    # 正式環境建置
 npm run preview  # 預覽正式環境
-astro add [pkg]  # 新增整合
+npx astro add [pkg]  # 新增整合
 ```
-```
+````
 
 ---
 
 ### Django + DRF
 
-```markdown
+````markdown
 # [專案名稱]
 
 ## 技術棧
-- Python 3.11+ / Django 5+
+- Python 3.12+ / Django 6
 - Django REST Framework
 - PostgreSQL
 - Celery + Redis（背景任務）
@@ -539,8 +541,8 @@ python manage.py migrate
 pytest
 pytest --cov=apps
 
-# Shell
-python manage.py shell_plus
+# Shell（自動匯入你的 models）
+python manage.py shell
 ```
 
 ## 環境變數
@@ -549,17 +551,17 @@ python manage.py shell_plus
 - `DATABASE_URL`
 - `REDIS_URL`
 - `DJANGO_SETTINGS_MODULE`
-```
+````
 
 ---
 
 ### Ruby on Rails
 
-```markdown
+````markdown
 # [專案名稱]
 
 ## 技術棧
-- Ruby 3.2+ / Rails 7+
+- Ruby 3.3+ / Rails 8
 - PostgreSQL
 - [前端: Hotwire / React]
 - RSpec + FactoryBot
@@ -625,7 +627,7 @@ bin/rails generate model User name:string email:string
 - `REDIS_URL`
 - `SECRET_KEY_BASE`
 - `RAILS_ENV`
-```
+````
 
 ---
 
@@ -672,6 +674,32 @@ bin/rails generate model User name:string email:string
 - 文件：[URL]
 ```
 
+### 把路徑相關的章節移到 rules
+
+如果某個章節只適用於 repo 的一部分（例如 monorepo 裡的前端），把它移到 `.claude/rules/` 並加上 `paths:` frontmatter，這樣只有在 Claude 處理符合的檔案時才會載入：
+
+```markdown
+---
+paths:
+  - "apps/web/**/*.{ts,tsx}"
+---
+
+# 前端規則
+- 預設使用 Server Components；僅在需要時加 'use client'
+- 先重用 `packages/ui` 的元件，再考慮自己寫
+```
+
+### 和其他 coding agent 共用同一個檔案
+
+如果 repo 已經有 `AGENTS.md`，在沒有 CLAUDE.md 或 CLAUDE.local.md 時，Claude Code 會直接讀它。想在上面加上 Claude 專屬的指示，就建立一個匯入它的 CLAUDE.md：
+
+```markdown
+@AGENTS.md
+
+## Claude Code
+- `src/billing/` 底下的變更使用 plan mode
+```
+
 ## 總結
 
 1. **從模板開始** - 不要從頭寫
@@ -679,7 +707,8 @@ bin/rails generate model User name:string email:string
 3. **保持更新** - CLAUDE.md 是活文件
 4. **具體明確** - 模糊指示 = 不一致結果
 5. **包含指令** - Claude 需要知道如何執行
+6. **強制規則放別處** - CLAUDE.md 是指引；硬性限制應該放在 `.claude/settings.json` 的 permissions 或 hooks
 
 ---
 
-另見：[CLAUDE.md 原則](../../concepts/claude-md-principles.md) | [CLAUDE.md 反模式](../../concepts/claude-md-anti-patterns.md)
+另見：[CLAUDE.md 原則](../../concepts/zh-TW/claude-md-principles.md) | [CLAUDE.md 反模式](../../concepts/zh-TW/claude-md-anti-patterns.md)

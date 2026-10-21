@@ -55,10 +55,10 @@ AI 輔助開發：
 
 **要這樣**：
 ```
-「探索驗證系統（thoroughness: medium）」
+「用 subagents 探索驗證系統（thoroughness: medium）」
 ```
 
-Claude 自動啟動 5 個以上的 parallel agents。
+Claude 會把彼此獨立的搜尋委派給 Explore subagents 平行執行，每個都在自己的 context window 中運作並回報摘要，讓你的主對話保持乾淨。
 
 ### 3. 自主執行
 
@@ -72,17 +72,25 @@ Claude：「要執行測試嗎？」
 你：「要」
 ```
 
-**要在 CLAUDE.md 設定**：
-```markdown
-## 自主操作
-- 建立/修改原始碼檔案
-- 執行測試
-- Git commit（僅限本地）
-
-## 需要確認
-- Git push
-- 資料庫變更
+**要在 `.claude/settings.json` 設定權限規則**：
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm test *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(npm run migrate *)"
+    ]
+  }
+}
 ```
+
+目前的 Claude Code 預設以 auto mode 啟動互動 session，例行的編輯和指令不會跳出詢問，而明確的 `ask` 和 `deny` 規則在每種模式下都仍然有效。在 CLAUDE.md 保留一份對應的「自主操作／需要確認」清單，讓 Claude 了解你的意圖，但光靠 CLAUDE.md 並不會強制執行任何事。
 
 ### 4. 審查，而非監督
 
@@ -110,13 +118,13 @@ Claude：「完成。建立了 3 個檔案，加入測試，全部通過。」
 
 2. 委派
    ├── 給 Claude 目標
-   ├── 讓它探索和規劃
+   ├── 讓它探索和規劃（plan mode：Shift+Tab）
    └── 信任平行執行
 
 3. 審查
    ├── 檢查結果
    ├── 驗證測試通過
-   └── 批准或迭代
+   └── 批准、迭代，或 /rewind
 
 4. 發布
    ├── Commit 變更
@@ -206,7 +214,7 @@ Claude：「功能完成。修改了 8 個檔案，建立 2 個新檔案。
 
 **AI 輔助方式**（約 3 分鐘）：
 ```
-你：「審查 PR #123」
+你：「審查 PR #123」   （或執行 /review 123）
 
 Claude：[平行分析]
         → 程式碼品質檢查
@@ -252,6 +260,8 @@ Claude：「PR 審查摘要：
 [你的測試政策]
 ```
 
+用 `/init` 產生起始版本，維持在 200 行以內，並用上面示範的權限規則來落實「需要確認」清單。
+
 ### 2. 使用 Session 為基礎的開發
 
 ```
@@ -262,18 +272,20 @@ Session 4：「建立前端元件」
 Session 5：「整合和測試」
 ```
 
-每個 session = 清晰的目標 + 自主執行 + 審查。
+每個 session = 清晰的目標 + 自主執行 + 審查。不相關的任務之間執行 `/clear`；用 `claude --continue` 或 `/resume` 接續先前的 session。
 
 ### 3. 善用模型選擇
 
 | 任務類型 | 模型 | 原因 |
 |-----------|-------|------|
-| 探索 | Haiku 4.5 | 快速、便宜、夠用 |
-| 實作 | Sonnet 4.6 | 最佳 coding 模型 |
-| 架構 | Opus 4.6 | 深度推理 |
-| 安全審查 | Opus 4.6 | 徹底分析 |
+| 快速查找、簡單編輯 | Haiku 5.5 | 快速、低成本，適合大量且講求低延遲的任務 |
+| 實作 | Sonnet 5.5 | 速度與智慧的最佳組合 |
+| 架構 | Opus 5.5 | 長時間的 agentic coding 與知識工作 |
+| 安全審查 | Opus 5.5 搭配 `high` 或 `max` effort | 徹底分析 |
 
-快速切換：`Option+P`（macOS）或 `Alt+P`（Windows）
+快速切換：`/model haiku|sonnet|opus`，或 `Option+P`（macOS）／`Alt+P`（Windows/Linux）。用 `/effort` 調整推理深度（5.5 系列模型預設為 `medium`），或在單一提示中加入 `ultrathink`。在 Pro、Max、Team、Enterprise 和 API 帳號上，`default` 模型是 Opus 5.5。Fable 5.1（`/model fable`）的官方定位是「適合高難度推理與長時程的 agentic 工作」，永遠不會是預設模型，在部分方案中會以 usage credits 計費。
+
+內建的 Explore subagent 使用你主對話的模型。若想用 Haiku 做探索，請自行定義一個 `model: haiku` 的 `Explore` subagent。
 
 ### 4. 信任流程
 
@@ -305,10 +317,10 @@ Session 5：「整合和測試」
 ### 品質指標
 
 AI 輔助開發通常改善：
-- 測試覆蓋率（Claude 預設會寫測試）
+- 測試覆蓋率（只要 CLAUDE.md 有要求，Claude 就會寫測試）
 - 文件（Claude 邊寫程式碼邊記錄）
 - 一致性（Claude 精確地遵循模式）
-- 安全性（Claude 檢查常見問題）
+- 安全性（Claude 檢查常見問題；可在你的 branch 上執行 `/security-review`）
 
 ## 常見陷阱
 
@@ -320,7 +332,7 @@ AI 輔助開發通常改善：
 ### 2. 不信任 Parallel Agents
 
 **問題**：一次執行一個搜尋
-**解決方案**：使用「Explore」或讓 Claude 平行化
+**解決方案**：請 Claude 使用 subagents（例如 Explore），或讓 Claude 平行化
 
 ### 3. 跳過 CLAUDE.md
 
@@ -329,8 +341,8 @@ AI 輔助開發通常改善：
 
 ### 4. 任務選錯模型
 
-**問題**：用 Opus 做簡單搜尋
-**解決方案**：探索用 Haiku，coding 用 Sonnet
+**問題**：用高 effort 的 Opus 做簡單搜尋
+**解決方案**：快速查找用 Haiku 5.5 或 `/effort low`，coding 用 Sonnet 5.5 或 Opus 5.5
 
 ## 48 小時心態
 
@@ -350,7 +362,7 @@ AI 輔助開發通常改善：
 
 - [Director Mode 基礎](./director-mode-basics.md)
 - [Parallel Agents](./parallel-agents.md)
-- [48 小時網站案例研究](../case-studies/48-hour-website.md)
+- [48 小時網站案例研究](../../case-studies/zh-TW/48-hour-website.md)
 - [CLAUDE.md 原則](./claude-md-principles.md)
 
 ---

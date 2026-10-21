@@ -62,6 +62,7 @@ name: Release Monitor
 on:
   schedule:
     - cron: '0 * * * *'  # Every hour
+
   workflow_dispatch:
     inputs:
       force_notify:
@@ -70,9 +71,14 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 env:
   REPO_TO_MONITOR: anthropics/claude-code
   VERSION_FILE: .github/last-known-version.txt
+  CLAUDE_FAST_MODEL: claude-haiku-5-5  # Short social copy and JSON extraction
+  CLAUDE_MODEL: claude-sonnet-5-5      # Long-form articles
 
 jobs:
   # ============================================
@@ -84,69 +90,59 @@ jobs:
       contents: write
     outputs:
       new_release: ${{ steps.check.outputs.new_release }}
-      version: ${{ steps.check.outputs.version }}
-      release_name: ${{ steps.check.outputs.release_name }}
-      release_url: ${{ steps.check.outputs.release_url }}
-      release_body: ${{ steps.check.outputs.release_body }}
+      version: ${{ steps.fetch.outputs.version }}
+      release_name: ${{ steps.fetch.outputs.release_name }}
+      release_url: ${{ steps.fetch.outputs.release_url }}
+      release_body: ${{ steps.fetch.outputs.release_body }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/checkout@v7
 
       - name: Get latest release
         id: fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          RELEASE_JSON=$(curl -s "https://api.github.com/repos/${{ env.REPO_TO_MONITOR }}/releases/latest")
+          RELEASE_JSON=$(gh api "repos/$REPO_TO_MONITOR/releases/latest")
 
-          VERSION=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
-          RELEASE_NAME=$(echo "$RELEASE_JSON" | jq -r '.name')
-          RELEASE_URL=$(echo "$RELEASE_JSON" | jq -r '.html_url')
-          RELEASE_BODY=$(echo "$RELEASE_JSON" | jq -r '.body // "No release notes"' | head -c 3000)
-
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
-          echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
-          echo "$RELEASE_BODY" > /tmp/release_body.txt
+          {
+            echo "version=$(jq -r '.tag_name' <<<"$RELEASE_JSON")"
+            echo "release_name=$(jq -r '(.name // .tag_name) | gsub("[\r\n]"; " ")' <<<"$RELEASE_JSON")"
+            echo "release_url=$(jq -r '.html_url' <<<"$RELEASE_JSON")"
+            # Base64 encode for safe multi-line output
+            echo "release_body=$(jq -r '.body // "No release notes"' <<<"$RELEASE_JSON" | head -c 3000 | base64 -w 0)"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Check if new release
         id: check
+        env:
+          LATEST_VERSION: ${{ steps.fetch.outputs.version }}
+          FORCE_NOTIFY: ${{ inputs.force_notify }}
         run: |
-          LATEST_VERSION="${{ steps.fetch.outputs.version }}"
+          LAST_VERSION=$(cat "$VERSION_FILE" 2>/dev/null || echo "none")
 
-          if [ -f "${{ env.VERSION_FILE }}" ]; then
-            LAST_VERSION=$(cat "${{ env.VERSION_FILE }}")
-          else
-            LAST_VERSION="none"
-          fi
-
-          if [ "$LATEST_VERSION" != "$LAST_VERSION" ] || [ "${{ github.event.inputs.force_notify }}" == "true" ]; then
-            echo "new_release=true" >> $GITHUB_OUTPUT
+          if [ "$LATEST_VERSION" != "$LAST_VERSION" ] || [ "$FORCE_NOTIFY" = "true" ]; then
+            echo "new_release=true" >> "$GITHUB_OUTPUT"
             echo "🆕 New release detected: $LATEST_VERSION"
           else
-            echo "new_release=false" >> $GITHUB_OUTPUT
+            echo "new_release=false" >> "$GITHUB_OUTPUT"
             echo "✓ No new release"
           fi
 
-          echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
-          echo "release_name=${{ steps.fetch.outputs.release_name }}" >> $GITHUB_OUTPUT
-          echo "release_url=${{ steps.fetch.outputs.release_url }}" >> $GITHUB_OUTPUT
-
-          # Base64 encode for safe output
-          BODY_B64=$(base64 -w 0 /tmp/release_body.txt)
-          echo "release_body=$BODY_B64" >> $GITHUB_OUTPUT
-
       - name: Update last known version
         if: steps.check.outputs.new_release == 'true'
+        env:
+          LATEST_VERSION: ${{ steps.fetch.outputs.version }}
         run: |
-          echo "${{ steps.check.outputs.version }}" > "${{ env.VERSION_FILE }}"
+          mkdir -p "$(dirname "$VERSION_FILE")"
+          echo "$LATEST_VERSION" > "$VERSION_FILE"
 
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add "${{ env.VERSION_FILE }}"
-          git diff --staged --quiet || git commit -m "chore: update last known version to ${{ steps.check.outputs.version }}"
-          git push || echo "Push failed"
+          git add "$VERSION_FILE"
+          git diff --staged --quiet || git commit -m "chore: update last known version to $LATEST_VERSION"
+          git push
 
   # ============================================
   # Job 2: Generate content with Claude API
@@ -172,10 +168,11 @@ jobs:
           RELEASE_BODY_B64: ${{ needs.check-release.outputs.release_body }}
         run: |
           # Decode release body
-          RELEASE_BODY=$(echo "$RELEASE_BODY_B64" | base64 -d)
+          RELEASE_BODY=$(base64 -d <<<"$RELEASE_BODY_B64")
 
-          # Create prompt for Claude
-          PROMPT="You are a developer advocate creating social media posts.
+          # Create prompt for Claude (variables expand; their contents are never executed)
+          PROMPT=$(cat <<EOF
+          You are a developer advocate creating social media posts.
 
           Release Info:
           - Version: $VERSION
@@ -185,38 +182,50 @@ jobs:
 
           Generate JSON with:
           {
-            \"main_post_en\": \"English post (280 chars max)\",
-            \"main_post_zh\": \"繁中貼文 (450 chars max)\",
-            \"discord_title\": \"Discord embed title\",
-            \"discord_description\": \"2-3 sentences\",
-            \"discord_features\": \"• Feature 1\\n• Feature 2\",
-            \"newsletter_slug\": \"version-slug-release\"
+            "main_post_en": "English post (280 chars max)",
+            "main_post_zh": "繁中貼文 (450 chars max)",
+            "discord_title": "Discord embed title",
+            "discord_description": "2-3 sentences",
+            "discord_features": "• Feature 1\n• Feature 2",
+            "newsletter_slug": "version-slug-release"
           }
 
-          Output ONLY valid JSON."
+          Output ONLY valid JSON, without markdown fences.
+          EOF
+          )
+
+          # Build the request with jq so the prompt is escaped correctly
+          REQUEST=$(jq -n --arg model "$CLAUDE_FAST_MODEL" --arg prompt "$PROMPT" '{
+            model: $model,
+            max_tokens: 4096,
+            output_config: {effort: "low"},
+            messages: [{role: "user", content: $prompt}]
+          }')
 
           # Call Claude API
-          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
-            -H "Content-Type: application/json" \
+          RESPONSE=$(curl -sS https://api.anthropic.com/v1/messages \
+            -H "content-type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
-            -d "{
-              \"model\": \"claude-sonnet-4-20250514\",
-              \"max_tokens\": 2000,
-              \"messages\": [{\"role\": \"user\", \"content\": $(echo "$PROMPT" | jq -Rs .)}]
-            }")
+            -d "$REQUEST")
 
-          # Extract content
-          CONTENT=$(echo "$RESPONSE" | jq -r '.content[0].text')
+          if jq -e '.error' <<<"$RESPONSE" > /dev/null; then
+            echo "API error: $(jq -r '.error.message' <<<"$RESPONSE")"
+            exit 1
+          fi
+
+          # Extract content. Current models can return a thinking block before
+          # the text, so join the text blocks instead of reading .content[0].
+          CONTENT=$(jq -r '[.content[] | select(.type == "text") | .text] | join("")' <<<"$RESPONSE" | sed '/^```/d')
 
           # Parse and set outputs
-          echo "main_post_en=$(echo "$CONTENT" | jq -r '.main_post_en' | base64 -w 0)" >> $GITHUB_OUTPUT
-          echo "main_post_zh=$(echo "$CONTENT" | jq -r '.main_post_zh' | base64 -w 0)" >> $GITHUB_OUTPUT
-          echo "newsletter_slug=$(echo "$CONTENT" | jq -r '.newsletter_slug')" >> $GITHUB_OUTPUT
-
-          # Save Discord content as JSON
-          echo "$CONTENT" | jq '{title: .discord_title, description: .discord_description, features: .discord_features}' > /tmp/discord.json
-          echo "discord_content=$(cat /tmp/discord.json | base64 -w 0)" >> $GITHUB_OUTPUT
+          {
+            echo "main_post_en=$(jq -r '.main_post_en' <<<"$CONTENT" | base64 -w 0)"
+            echo "main_post_zh=$(jq -r '.main_post_zh' <<<"$CONTENT" | base64 -w 0)"
+            echo "newsletter_slug=$(jq -r '.newsletter_slug' <<<"$CONTENT")"
+            # Save Discord content as JSON
+            echo "discord_content=$(jq -c '{title: .discord_title, description: .discord_description, features: .discord_features}' <<<"$CONTENT" | base64 -w 0)"
+          } >> "$GITHUB_OUTPUT"
 
   # ============================================
   # Job 3: Discord notification
@@ -224,34 +233,26 @@ jobs:
   notify-discord:
     needs: [check-release, generate-content]
     runs-on: ubuntu-latest
-    if: needs.check-release.outputs.new_release == 'true'
 
     steps:
       - name: Send Discord notification
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          VERSION: ${{ needs.check-release.outputs.version }}
           RELEASE_URL: ${{ needs.check-release.outputs.release_url }}
           DISCORD_CONTENT_B64: ${{ needs.generate-content.outputs.discord_content }}
         run: |
-          DISCORD_JSON=$(echo "$DISCORD_CONTENT_B64" | base64 -d)
-          TITLE=$(echo "$DISCORD_JSON" | jq -r '.title')
-          DESC=$(echo "$DISCORD_JSON" | jq -r '.description')
-          FEATURES=$(echo "$DISCORD_JSON" | jq -r '.features')
-
-          curl -X POST "$DISCORD_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"embeds\": [{
-                \"title\": \"$TITLE\",
-                \"description\": \"$DESC\",
-                \"url\": \"$RELEASE_URL\",
-                \"color\": 5763719,
-                \"fields\": [
-                  {\"name\": \"✨ Features\", \"value\": \"$FEATURES\"}
-                ]
-              }]
-            }"
+          # jq builds the payload, so quotes and newlines in the content are escaped
+          base64 -d <<<"$DISCORD_CONTENT_B64" |
+            jq --arg url "$RELEASE_URL" '{embeds: [{
+              title: .title,
+              description: .description,
+              url: $url,
+              color: 5763719,
+              fields: [{name: "✨ Features", value: (.features | .[0:1024])}]
+            }]}' |
+            curl -sS --fail-with-body -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d @-
 
   # ============================================
   # Job 4: Generate and commit articles
@@ -259,18 +260,12 @@ jobs:
   generate-newsletter:
     needs: [check-release, generate-content]
     runs-on: ubuntu-latest
-    if: needs.check-release.outputs.new_release == 'true'
     permissions:
       contents: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+        uses: actions/checkout@v7
 
       - name: Generate articles with Claude API
         env:
@@ -279,48 +274,58 @@ jobs:
           RELEASE_BODY_B64: ${{ needs.check-release.outputs.release_body }}
           NEWSLETTER_SLUG: ${{ needs.generate-content.outputs.newsletter_slug }}
         run: |
-          RELEASE_BODY=$(echo "$RELEASE_BODY_B64" | base64 -d)
+          RELEASE_BODY=$(base64 -d <<<"$RELEASE_BODY_B64")
+          PUB_DATE=$(date +%Y-%m-%d)
+          # The slug comes from the model, so keep only safe filename characters
+          SLUG=$(printf '%s' "$NEWSLETTER_SLUG" | tr -cd 'a-z0-9-')
 
           # Generate article content for each language
           for LANG in en zh-tw ja; do
-            PROMPT="Generate a release notes article in $LANG for version $VERSION.
-            Release notes: $RELEASE_BODY
+            PROMPT=$(cat <<EOF
+          Generate a release notes article in $LANG for version $VERSION.
+          Release notes: $RELEASE_BODY
 
-            Output markdown with frontmatter:
-            ---
-            title: \"...\"
-            description: \"...\"
-            pubDate: \"$(date +%Y-%m-%d)\"
-            version: \"$VERSION\"
-            ---
+          Output markdown with frontmatter, without wrapping it in a code fence:
+          ---
+          title: "..."
+          description: "..."
+          pubDate: "$PUB_DATE"
+          version: "$VERSION"
+          ---
 
-            [Article content...]"
+          [Article content...]
+          EOF
+            )
 
-            RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
-              -H "Content-Type: application/json" \
+            REQUEST=$(jq -n --arg model "$CLAUDE_MODEL" --arg prompt "$PROMPT" '{
+              model: $model,
+              max_tokens: 8192,
+              messages: [{role: "user", content: $prompt}]
+            }')
+
+            RESPONSE=$(curl -sS https://api.anthropic.com/v1/messages \
+              -H "content-type: application/json" \
               -H "x-api-key: $ANTHROPIC_API_KEY" \
               -H "anthropic-version: 2023-06-01" \
-              -d "{
-                \"model\": \"claude-sonnet-4-20250514\",
-                \"max_tokens\": 4000,
-                \"messages\": [{\"role\": \"user\", \"content\": $(echo "$PROMPT" | jq -Rs .)}]
-              }")
+              -d "$REQUEST")
 
-            CONTENT=$(echo "$RESPONSE" | jq -r '.content[0].text')
+            CONTENT=$(jq -r '[.content[] | select(.type == "text") | .text] | join("")' <<<"$RESPONSE")
 
             # Determine output path
             if [ "$LANG" = "en" ]; then
-              OUTPUT_PATH="src/content/articles/${NEWSLETTER_SLUG}.md"
+              OUTPUT_PATH="src/content/articles/${SLUG}.md"
             else
-              OUTPUT_PATH="src/content/articles/${LANG}/${NEWSLETTER_SLUG}.md"
+              OUTPUT_PATH="src/content/articles/${LANG}/${SLUG}.md"
             fi
 
-            mkdir -p $(dirname "$OUTPUT_PATH")
-            echo "$CONTENT" > "$OUTPUT_PATH"
+            mkdir -p "$(dirname "$OUTPUT_PATH")"
+            printf '%s\n' "$CONTENT" > "$OUTPUT_PATH"
             echo "Created: $OUTPUT_PATH"
           done
 
       - name: Commit and push
+        env:
+          VERSION: ${{ needs.check-release.outputs.version }}
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
@@ -329,11 +334,65 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "content: add newsletter for ${{ needs.check-release.outputs.version }}"
+            git commit -m "content: add newsletter for $VERSION"
             git pull --rebase origin main  # Avoid race condition
             git push
           fi
 ```
+
+The workflow implements the Discord and article jobs from the diagram. X/Twitter posting and email newsletters follow the same pattern; see [`social-post.yml`](../templates/github-actions-suite/social-post.yml) and [`newsletter-trigger.yml`](../templates/github-actions-suite/newsletter-trigger.yml) in the GitHub Actions suite.
+
+### Calling the Claude API from a workflow
+
+- **Pick the model per task.** `claude-haiku-5-5` handles short social copy and JSON extraction quickly and cheaply; `claude-sonnet-5-5` writes the long-form articles. Older IDs such as `claude-sonnet-4-20250514` are retired and now fail.
+- **Read the text blocks, not `content[0]`.** Current models think before answering, and the response can start with a `thinking` block. Join the blocks whose `type` is `text`.
+- **Leave room in `max_tokens`.** Thinking counts toward the limit, so use at least 4096 for short outputs. For simple tasks, `output_config: {effort: "low"}` keeps thinking short.
+- **Don't send sampling parameters.** Current models reject non-default `temperature`, `top_p`, and `top_k` with a 400 error.
+- **Build JSON with `jq`.** `jq -n --arg` escapes quotes and newlines in prompts and payloads, which hand-built JSON strings get wrong.
+
+## Claude Code GitHub Action
+
+The workflow above sends single Messages API requests, which is enough for text generation. When you want the Claude Code agent itself in CI, so it can read the repository, run tools, answer `@claude` requests, review pull requests, or push a fix, use the official [`anthropics/claude-code-action@v1`](https://github.com/anthropics/claude-code-action):
+
+- **Quick setup:** run `/install-github-app` in Claude Code. It installs the Claude GitHub App, stores the API key as a secret, and opens a pull request with the workflow.
+- **Interactive mode:** without a `prompt` input, Claude responds when someone with write access mentions `@claude` in an issue, pull request, or review.
+- **Automation mode:** with a `prompt` input (plain text or a skill such as `/code-review:code-review`), Claude runs on any trigger, including `schedule`.
+- **CLI flags:** pass `--model`, `--max-turns`, `--allowedTools`, `--append-system-prompt`, or `--mcp-config` through `claude_args`.
+- **Authentication:** `anthropic_api_key`, or `claude_code_oauth_token` (created with `claude setup-token`) to use a Claude subscription.
+- **v0 inputs were removed:** `direct_prompt`, `custom_instructions`, `model`, `max_turns`, `allowed_tools`, `claude_env`, and `mcp_config` became `prompt`, `claude_args`, and `settings`.
+
+This scheduled workflow, from the official docs, writes a daily report to the run log. Claude reads commits and issues through the GitHub tools the action provides, so no checkout is needed:
+
+```yaml
+name: Daily Report
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # 09:00 UTC every day
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: read
+      id-token: write
+    steps:
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: "Generate a summary of yesterday's commits and open issues"
+          claude_args: |
+            --model claude-sonnet-5-5
+            --max-turns 10
+            --allowedTools "mcp__github__list_commits,mcp__github__list_issues"
+```
+
+Ready-made templates: [`claude.yml`](../templates/github-actions-suite/claude.yml) answers `@claude` mentions, and [`claude-code-review.yml`](../templates/github-actions-suite/claude-code-review.yml) reviews every pull request. Only users with write access can trigger the action; keep untrusted text such as issue titles out of `run:` scripts and `prompt` inputs.
 
 ## Key Patterns
 
@@ -342,27 +401,33 @@ jobs:
 ```yaml
 jobs:
   job-a:
+    runs-on: ubuntu-latest
     outputs:
       data: ${{ steps.step1.outputs.data }}
     steps:
       - id: step1
-        run: echo "data=value" >> $GITHUB_OUTPUT
+        run: echo "data=value" >> "$GITHUB_OUTPUT"
 
   job-b:
     needs: job-a
+    runs-on: ubuntu-latest
     steps:
-      - run: echo "${{ needs.job-a.outputs.data }}"
+      - env:
+          DATA: ${{ needs.job-a.outputs.data }}
+        run: echo "$DATA"
 ```
+
+Pass values into scripts through `env:`; pasting `${{ }}` expressions straight into `run:` lets crafted content run as shell code.
 
 ### 2. Base64 Encoding for Multi-line Content
 
-```yaml
+```bash
 # Encode
-BODY_B64=$(echo "$MULTI_LINE_CONTENT" | base64 -w 0)
-echo "body=$BODY_B64" >> $GITHUB_OUTPUT
+BODY_B64=$(printf '%s' "$MULTI_LINE_CONTENT" | base64 -w 0)
+echo "body=$BODY_B64" >> "$GITHUB_OUTPUT"
 
 # Decode
-CONTENT=$(echo "$BODY_B64" | base64 -d)
+CONTENT=$(base64 -d <<<"$BODY_B64")
 ```
 
 ### 3. Conditional Job Execution
@@ -414,15 +479,19 @@ gh run view <run-id> --log
 
 | Component | Cost |
 |-----------|------|
-| GitHub Actions | Free (2,000 min/month) |
-| Claude API (~5 calls/release) | ~$0.10/release |
-| **Monthly (4 releases)** | **~$0.40** |
+| GitHub Actions | Free for public repos (2,000 min/month for private repos on the Free plan) |
+| Claude API (1 Haiku call + 3 Sonnet articles per release) | ~$0.15/release |
+| **Monthly (4 releases)** | **~$0.60** |
+
+Estimates use list prices (Haiku 5.5 from $0.10/$0.50 and Sonnet 5.5 $2/$10 per million input/output tokens) and include thinking tokens. Check [current pricing](https://platform.claude.com/docs/en/about-claude/pricing).
 
 ## Related Resources
 
 - [48-Hour Website Case Study](../case-studies/48-hour-website.md)
 - [Release Monitor Template](../templates/release-monitor-workflow.yml)
-- [Claude API Documentation](https://docs.anthropic.com/en/api)
+- [GitHub Actions Suite](../templates/github-actions-suite/)
+- [Claude Code GitHub Actions](https://code.claude.com/docs/en/github-actions)
+- [Claude API Documentation](https://platform.claude.com/docs)
 
 ---
 

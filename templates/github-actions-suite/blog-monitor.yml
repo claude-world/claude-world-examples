@@ -8,7 +8,6 @@
 #
 # Optional Secrets:
 # - X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET: X/Twitter
-# - THREADS_USER_ID, THREADS_ACCESS_TOKEN: Threads
 
 name: Blog Monitor
 
@@ -28,38 +27,40 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 env:
   # ========================================
   # CUSTOMIZE THESE VALUES
   # ========================================
   BLOG_URL: https://example.com/blog
   TRACKING_FILE: .github/processed-articles.json
-  CLAUDE_MODEL: claude-sonnet-4-20250514
+  # Extracting metadata from HTML is a high-volume extraction task, so Haiku fits.
+  CLAUDE_MODEL: claude-haiku-5-5
 
 jobs:
   check-blog:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     outputs:
       has_new: ${{ steps.check.outputs.has_new }}
       articles_json: ${{ steps.check.outputs.articles_json }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Check for new articles
         id: check
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          SPECIFIC_URL: ${{ github.event.inputs.blog_url }}
-          FORCE_PROCESS: ${{ github.event.inputs.force_process }}
+          SPECIFIC_URL: ${{ inputs.blog_url }}
+          FORCE_PROCESS: ${{ inputs.force_process }}
         run: |
           cat > /tmp/check-blog.js << 'EOF'
           const https = require('https');
@@ -67,6 +68,8 @@ jobs:
 
           const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
           const TRACKING_FILE = process.env.TRACKING_FILE || '.github/processed-articles.json';
+          const BLOG_URL = process.env.SPECIFIC_URL || process.env.BLOG_URL || 'https://example.com/blog';
+          const FORCE = process.env.FORCE_PROCESS === 'true';
 
           // Load processed articles
           let processed = { articles: [] };
@@ -74,18 +77,18 @@ jobs:
             processed = JSON.parse(fs.readFileSync(TRACKING_FILE, 'utf-8'));
           } catch (e) {}
 
-          // Fetch URL
+          // Fetch URL (follows relative and absolute redirects)
           function fetchUrl(url) {
             return new Promise((resolve, reject) => {
               const urlObj = new URL(url);
               const options = {
                 hostname: urlObj.hostname,
-                path: urlObj.pathname,
+                path: urlObj.pathname + urlObj.search,
                 headers: { 'User-Agent': 'BlogMonitor/1.0' }
               };
               https.get(options, (res) => {
                 if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                  return fetchUrl(res.headers.location).then(resolve).catch(reject);
+                  return fetchUrl(new URL(res.headers.location, url).href).then(resolve).catch(reject);
                 }
                 let data = '';
                 res.on('data', chunk => data += chunk);
@@ -98,8 +101,9 @@ jobs:
           async function callClaude(prompt) {
             return new Promise((resolve, reject) => {
               const body = JSON.stringify({
-                model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
-                max_tokens: 2000,
+                model: process.env.CLAUDE_MODEL || 'claude-haiku-5-5',
+                max_tokens: 4096,
+                output_config: { effort: 'low' },
                 messages: [{ role: 'user', content: prompt }]
               });
 
@@ -118,8 +122,10 @@ jobs:
                 res.on('end', () => {
                   try {
                     const response = JSON.parse(data);
-                    if (response.error) reject(new Error(response.error.message));
-                    else resolve(response.content[0].text);
+                    if (response.error) return reject(new Error(response.error.message));
+                    // Current models can return a thinking block first; read the text block
+                    const text = response.content.find(block => block.type === 'text');
+                    resolve(text ? text.text : '');
                   } catch (e) { reject(e); }
                 });
               });
@@ -144,9 +150,9 @@ jobs:
           }
 
           async function main() {
-            const blogHtml = await fetchUrl(process.env.BLOG_URL || 'https://example.com/blog');
+            const blogHtml = await fetchUrl(BLOG_URL);
             const slugs = extractLinks(blogHtml);
-            const newSlugs = slugs.filter(s => !processed.articles.includes(s));
+            const newSlugs = FORCE ? slugs : slugs.filter(s => !processed.articles.includes(s));
 
             if (newSlugs.length === 0) {
               console.log(JSON.stringify({ has_new: false }));
@@ -156,7 +162,7 @@ jobs:
             const articles = [];
             for (const slug of newSlugs.slice(0, 3)) {
               try {
-                const articleHtml = await fetchUrl(`${process.env.BLOG_URL}/${slug}`);
+                const articleHtml = await fetchUrl(`${BLOG_URL}/${slug}`);
                 const content = await callClaude(`
                   Analyze this HTML and extract:
                   - title
@@ -188,17 +194,14 @@ jobs:
           });
           EOF
 
-          TRACKING_FILE="${{ env.TRACKING_FILE }}" \
-          BLOG_URL="${{ env.BLOG_URL }}" \
-          CLAUDE_MODEL="${{ env.CLAUDE_MODEL }}" \
+          # BLOG_URL, TRACKING_FILE and CLAUDE_MODEL come from the workflow env
           node /tmp/check-blog.js > /tmp/result.json
 
-          HAS_NEW=$(cat /tmp/result.json | jq -r '.has_new')
-          echo "has_new=$HAS_NEW" >> $GITHUB_OUTPUT
+          HAS_NEW=$(jq -r '.has_new' /tmp/result.json)
+          echo "has_new=$HAS_NEW" >> "$GITHUB_OUTPUT"
 
           if [ "$HAS_NEW" == "true" ]; then
-            ARTICLES=$(cat /tmp/result.json | jq -c '.articles')
-            echo "articles_json=$(echo "$ARTICLES" | base64 -w 0)" >> $GITHUB_OUTPUT
+            echo "articles_json=$(jq -c '.articles' /tmp/result.json | base64 -w 0)" >> "$GITHUB_OUTPUT"
           fi
 
   generate-content:
@@ -210,29 +213,26 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Generate articles
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ARTICLES_B64: ${{ needs.check-blog.outputs.articles_json }}
         run: |
-          ARTICLES=$(echo "$ARTICLES_B64" | base64 -d)
+          ARTICLES=$(base64 -d <<<"$ARTICLES_B64")
+          mkdir -p content/articles
 
-          # Generate markdown articles for each detected article
-          echo "$ARTICLES" | jq -c '.[]' | while read -r article; do
-            TITLE=$(echo "$article" | jq -r '.title')
-            SLUG=$(echo "$article" | jq -r '.slug')
-            SUMMARY=$(echo "$article" | jq -r '.summary')
-            DATE=$(echo "$article" | jq -r '.date')
-
-            mkdir -p content/articles
+          # Generate markdown articles for each detected article.
+          # jq emits JSON strings, which are valid quoted YAML values in front matter.
+          jq -c '.[]' <<<"$ARTICLES" | while read -r article; do
+            SLUG=$(jq -r '.slug' <<<"$article")
+            SUMMARY=$(jq -r '.summary' <<<"$article")
 
             cat > "content/articles/${SLUG}.md" << MARKDOWN
           ---
-          title: "${TITLE}"
-          date: "${DATE}"
-          description: "${SUMMARY}"
+          title: $(jq '.title' <<<"$article")
+          date: $(jq '.date' <<<"$article")
+          description: $(jq '.summary' <<<"$article")
           ---
 
           ${SUMMARY}
@@ -247,25 +247,22 @@ jobs:
         env:
           ARTICLES_B64: ${{ needs.check-blog.outputs.articles_json }}
         run: |
-          ARTICLES=$(echo "$ARTICLES_B64" | base64 -d)
+          ARTICLES=$(base64 -d <<<"$ARTICLES_B64")
 
-          # Update tracking file
-          if [ -f "${{ env.TRACKING_FILE }}" ]; then
-            EXISTING=$(cat "${{ env.TRACKING_FILE }}")
+          if [ -f "$TRACKING_FILE" ]; then
+            EXISTING=$(cat "$TRACKING_FILE")
           else
             EXISTING='{"articles":[]}'
           fi
 
-          NEW_SLUGS=$(echo "$ARTICLES" | jq -r '.[].slug')
-          UPDATED=$(echo "$EXISTING" | jq --argjson new "$(echo "$NEW_SLUGS" | jq -Rs 'split("\n") | map(select(. != ""))')" '.articles += $new | .articles |= unique')
-
-          mkdir -p $(dirname "${{ env.TRACKING_FILE }}")
-          echo "$UPDATED" > "${{ env.TRACKING_FILE }}"
+          mkdir -p "$(dirname "$TRACKING_FILE")"
+          jq --argjson new "$(jq '[.[].slug]' <<<"$ARTICLES")" \
+            '.articles += $new | .articles |= unique' <<<"$EXISTING" > "$TRACKING_FILE"
 
       - name: Commit changes
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add content/ "${{ env.TRACKING_FILE }}"
+          git add content/ "$TRACKING_FILE"
           git diff --staged --quiet || git commit -m "content: add new articles"
-          git push || echo "Nothing to push"
+          git push

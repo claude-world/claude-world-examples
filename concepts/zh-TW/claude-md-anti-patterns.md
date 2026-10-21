@@ -50,21 +50,21 @@
 - Redux 做狀態管理
 - Jest 做測試
 
-# 現實：專案 6 個月前已遷移到 React 18 + hooks + Zustand
+# 現實：專案 6 個月前已遷移到 React 19 + hooks + Zustand
 ```
 
 **為何失敗**：Claude 為錯誤的版本產生程式碼，導致不斷修正。
 
-**修正**：每季或重大變更後審查 CLAUDE.md：
+**修正**：每季或重大變更後審查 CLAUDE.md，並執行 `/doctor prompt-audit` 找出指向已不存在的檔案或指令的內容：
 
 ```markdown
 ## 技術棧
-- React 18.2（僅使用 functional components + hooks）
-- Zustand 4.x 做 client state
-- React Query 做 server state
+- React 19（僅使用 functional components + hooks）
+- Zustand 5.x 做 client state
+- TanStack Query v5 做 server state
 - Vitest 做測試（2024 年從 Jest 遷移）
 
-最後更新：2025-01-15
+最後更新：2026-10-01
 ```
 
 ### 3. 缺少原因說明
@@ -125,6 +125,8 @@
 優先順序：對於 above-the-fold 內容，效能規則優先於風格規則。
 ```
 
+衝突也會藏在不同檔案之間。子目錄的 CLAUDE.md、`.claude/rules/` 和你的使用者層級指示會一起載入，彼此不會互相覆蓋，所以 Claude 可能遵循任何一方。`/doctor prompt-audit` 會回報互相矛盾的指示檔案。
+
 ### 5. 包山包海
 
 **問題**：CLAUDE.md 超過 2000 行，涵蓋每種可能情境。
@@ -134,19 +136,20 @@
 - 每個 API endpoint 規格
 - 完整的資料庫 schema
 - 完整的部署流程
+- 逐檔說明整個程式碼庫
 - 3 年前的歷史決策
 - 會議記錄
 ```
 
-**為何失敗**：Claude 的 context window 被低價值資訊填滿，留給實際工作的空間更少。
+**為何失敗**：CLAUDE.md 每個 session 都會完整載入。低價值資訊填滿 context window，遵循度也跟著下降：真正重要的規則被淹沒在雜訊裡。
 
-**修正**：保持 CLAUDE.md 聚焦；連結到詳細文件：
+**修正**：每個 CLAUDE.md 控制在約 200 行以內。連結到詳細文件，並把流程改寫成 skill：
 
 ```markdown
 # 好的範例
 
 ## 快速參考
-- 技術：Next.js 14、PostgreSQL、Prisma
+- 技術：Next.js 16、PostgreSQL、Prisma
 - 指令：`pnpm dev`、`pnpm test`、`pnpm db:migrate`
 
 ## 核心指引
@@ -155,8 +158,23 @@
 ## 詳細文件
 - API 規格：參見 `/docs/api/README.md`
 - 資料庫：參見 `/prisma/README.md`
-- 部署：參見 `/docs/deployment.md`
+- 部署：使用 `/deploy` skill（`.claude/skills/deploy/SKILL.md`）
 ```
+
+只跟某個區域有關的指引，應該放在 `.claude/rules/`。帶有 `paths:` frontmatter 的規則只會在 Claude 處理符合的檔案時載入，例如 `.claude/rules/database.md`：
+
+```markdown
+---
+paths:
+  - "prisma/**"
+---
+
+# 資料庫規則
+- 每次 schema 變更都需要 migration（`pnpm db:migrate`）
+- 永遠不要修改 `prisma/migrations/` 中已套用的 migrations
+```
+
+別想用 `@path` 匯入來縮短檔案：被匯入的檔案同樣會在啟動時載入。像上面那樣寫一般路徑，Claude 就只會在需要時才開啟該文件。
 
 ### 6. 只有限制沒有權限
 
@@ -196,6 +214,29 @@
 - 刪除測試檔案
 ```
 
+> **CLAUDE.md 不會授予或封鎖任何權限。** 這些清單引導的是 Claude 的判斷；工具存取權是由 Claude Code 另外強制執行的，靠的是 `.claude/settings.json` 裡的 `permissions`，以及你選擇的權限模式（`Shift+Tab`，或設定中的 `defaultMode`）。同樣的意圖可以對應到三種規則類型，檢查順序是先 deny、再 ask、最後 allow：
+
+```json
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(pnpm test *)",
+      "Bash(pnpm lint *)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Edit(src/auth/**)"
+    ],
+    "deny": [
+      "Bash(git push --force *)"
+    ]
+  }
+}
+```
+
+規則比對的是指令的實際寫法（`git push origin main --force` 會繞過 deny 規則，但仍會被 `ask` 規則攔下），所以要把範圍窄的 deny 和範圍寬的 ask 搭配使用。規則模式表達不了的檢查，請改用 PreToolUse [hook](./hooks-basics.md)。
+
 ### 7. 隱含假設
 
 **問題**：假設 Claude 知道沒有文件記載的事情。
@@ -212,11 +253,11 @@
 
 **修正**：把一切都明確化：
 
-```markdown
+````markdown
 ## API 指引
 
 ### 回應格式
-```json
+```jsonc
 {
   "success": true|false,
   "data": { ... } | null,
@@ -232,13 +273,13 @@ if (!hasPermission(user, 'resource:action')) {
   throw new ForbiddenError('ERR_PERM_001');
 }
 ```
-```
+````
 
 ### 8. 過時的範例
 
 **問題**：程式碼範例使用已棄用的模式或舊語法。
 
-```markdown
+````markdown
 # 不好的範例
 ## 元件模式
 ```jsx
@@ -253,12 +294,13 @@ class UserProfile extends React.Component {
   // ...
 }
 ```
+````
 
 **為何失敗**：Claude 複製範例模式，產生過時的程式碼。
 
 **修正**：模式變更時更新範例：
 
-```markdown
+````markdown
 ## 元件模式
 ```tsx
 // 資料載入元件的標準模式
@@ -272,7 +314,7 @@ export function UserProfile({ userId }: { userId: string }) {
   return <ProfileCard user={user} />;
 }
 ```
-```
+````
 
 ## 診斷檢查清單
 
@@ -287,6 +329,8 @@ export function UserProfile({ userId }: { userId: string }) {
 | 「這應該放哪裡？」 | 缺少專案結構 | 加入目錄指南 |
 | 「可以安裝 X 嗎？」 | 缺少依賴政策 | 加入核准的依賴清單 |
 
+如果 Claude 問的問題 CLAUDE.md 裡已經有答案，通常是措辭不夠明確。如果它一直違反已經寫下的規則，可能是檔案太長、規則被淹沒了，或者這條規則需要的是強制執行（權限規則或 hook），而不是文字說明。執行 `/context` 確認檔案到底有沒有載入。
+
 ## CLAUDE.md 健康檢查
 
 定期執行這個檢查：
@@ -296,11 +340,12 @@ export function UserProfile({ userId }: { userId: string }) {
 
 1. [ ] 技術棧符合實際依賴
 2. [ ] 範例使用目前的模式
-3. [ ] 沒有矛盾的指引
-4. [ ] 權限是平衡的（不只是限制）
-5. [ ] 不超過 500 行（連結到詳細文件）
+3. [ ] 沒有矛盾的指引（`/doctor prompt-audit` 可以幫忙）
+4. [ ] 權限是平衡的（不只是限制）；硬性限制放在 settings.json 或 hooks
+5. [ ] 不超過約 200 行（路徑相關規則放 `.claude/rules/`，流程放 skills）
 6. [ ] 「最後更新」日期是最新的
 7. [ ] 新團隊成員能理解
+8. [ ] `/context` 的 Memory files 列出了預期的檔案
 ```
 
 ## 快速修正
@@ -344,8 +389,8 @@ export function UserProfile({ userId }: { userId: string }) {
 2. **保持更新** - 專案變更時就更新
 3. **解釋原因** - 脈絡幫助 Claude 做出更好的決定
 4. **解決衝突** - 規則衝突時設定優先順序
-5. **保持聚焦** - 連結到詳細文件而非嵌入
-6. **平衡權限** - 賦能，而不只是限制
+5. **保持聚焦** - 控制在約 200 行以內；其餘交給 rules、skills 和連結
+6. **平衡權限** - 賦能，而不只是限制；硬性限制交給 settings.json 強制執行
 7. **明確表達** - 不要用「像平常一樣」或「標準方式」
 8. **更新範例** - 程式碼範例必須符合目前模式
 

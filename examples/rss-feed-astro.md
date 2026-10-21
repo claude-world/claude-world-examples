@@ -680,8 +680,7 @@ open http://localhost:4321/rss.xml
 | Validator | URL |
 |-----------|-----|
 | W3C Feed Validator | https://validator.w3.org/feed/ |
-| Feed Validator | https://www.feedvalidator.org/ |
-| RSS Advisory Board | https://rss.scripting.com/validator/ |
+| RSS Advisory Board | https://www.rssboard.org/rss-validator/ |
 
 ### 3. Common Validation Errors
 

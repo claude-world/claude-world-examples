@@ -10,15 +10,17 @@ Use `trend-pulse` to choose a topic with real momentum, validate it, and have Cl
 
 1. Use `get_trending` to collect current topics.
 2. Pick one topic that fits your audience.
-3. Use `search_trends` to confirm the topic is not a one-hour spike.
-4. Ask Claude to produce a brief with angle, outline, keywords, and risks.
+3. Use `search_trends` to confirm the topic is not a one-hour spike (or `get_trend_history` if you save snapshots).
+4. Ask Claude to produce a brief with angle, outline, keywords, and risks. The server's `get_content_brief` tool can supply hooks and platform specs for social formats.
+
+Set up the server first; see [Trend Pulse: Basic Trending Queries](./basic-trending.md#project-mcp-configuration).
 
 ## Example Prompt for Claude Code
 
 ```text
 Use the trend-pulse MCP server to create a content brief for Claude World.
 
-1. Call `get_trending` for US developer and AI topics from the last 7 days.
+1. Call `get_trending` with geo `US` and sources `hackernews,github,devto,arxiv` for current developer and AI topics.
 2. Choose one topic that is both rising and practical for Claude Code users.
 3. Call `search_trends` on the chosen topic plus two related keywords to validate sustained interest.
 4. Produce a content brief with:

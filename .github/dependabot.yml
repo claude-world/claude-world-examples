@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # Keeps the actions used by this repository's own CI current.
+  # The workflow templates under templates/ are reviewed by hand.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: ci

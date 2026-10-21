@@ -89,7 +89,7 @@
 │    ├── [ ] Bundle 大小已優化（程式碼分割）                      │
 │    ├── [ ] 圖片已優化（WebP、延遲載入）                         │
 │    ├── [ ] 關鍵 CSS 內聯                                       │
-│    ├── [ ] Core Web Vitals 通過（LCP、FID、CLS）               │
+│    ├── [ ] Core Web Vitals 通過（LCP、INP、CLS）               │
 │    └── [ ] 靜態資源 CDN 已配置                                  │
 │                                                                │
 │  □ 負載處理                                                    │
@@ -275,6 +275,8 @@
 "Perform a security review of this codebase focusing on OWASP Top 10"
 ```
 
+這個提示會稽核整個程式碼庫；想要更深入的分析，可在提示中加入 `ultrathink`。若只想檢查發布分支上的變更，請執行內建的 `/security-review` 指令，它會比對你的分支與 `origin` 預設分支的差異，找出注入、身份驗證缺陷與資料外洩等風險。
+
 ### 步驟 2：效能分析
 
 ```
@@ -295,6 +297,8 @@
 - Recovery mechanisms"
 ```
 
+合併上線分支前，執行 `/code-review`（別名 `/review`），由全新的 subagent 檢查差異中的正確性 bug。可傳入等級（例如 `/code-review high`）進行更徹底的審查，或加上 `--comment` 將發現直接留言到 PR。
+
 ### 步驟 4：產生報告
 
 ```
@@ -308,16 +312,17 @@
 ## 正式環境審查會話範例
 
 ```
-你："Run production readiness check before we launch next week"
+你："Run a production readiness check before we launch next week.
+     Use parallel subagents, one per checklist area."
 
-Claude：[啟動 parallel agents]
+Claude：[在背景啟動 5 個 subagents；可用 /tasks 查看]
 → Agent 1：安全掃描
 → Agent 2：效能分析
 → Agent 3：錯誤處理審查
 → Agent 4：測試覆蓋率檢查
 → Agent 5：文件稽核
 
-[2 分鐘後]
+[幾分鐘後]
 
 Claude："Production Readiness Report:
 
@@ -383,8 +388,30 @@ MEDIUM（加入待辦）：
 
 **執行完整審查的指令**：
 ```
-"Perform a complete production readiness review using the standard checklist"
+/production-readiness
 ```
+
+除非你提供檢查清單，否則 Claude 並不知道「標準檢查清單」是什麼。把本頁的檢查清單存成專案 skill，每次上線前執行即可：
+
+```
+.claude/skills/production-readiness/
+├── SKILL.md
+└── checklist.md    # 本頁的六份檢查清單
+```
+
+```markdown
+---
+name: production-readiness
+description: Production readiness review before a launch. Checks security, performance, reliability, observability, testing and documentation against a checklist.
+disable-model-invocation: true
+---
+
+Review this codebase against every section of ${CLAUDE_SKILL_DIR}/checklist.md.
+Use one subagent per section, then write a report grouped as Critical (block launch),
+High priority, Medium and Good, with file:line evidence for each finding.
+```
+
+`disable-model-invocation: true` 讓這項審查維持手動觸發：只有在你輸入 `/production-readiness` 時才會執行，而不是由 Claude 自行判斷程式碼「看起來可以上線」就啟動。
 
 ---
 

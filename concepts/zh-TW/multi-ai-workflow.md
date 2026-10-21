@@ -14,6 +14,8 @@
 
 把它們一起用可能比只用一個更有效率。
 
+Claude Code 本身能涵蓋的範圍也比以前更廣：目前的 Claude 模型有 1M token 的 context window，subagents 可在背景執行（`Ctrl+B`、`/tasks`），內建的 `/batch` skill 能把大型機械式變更分散到多個平行的 worktrees。當你需要其他 CLI 的特定優勢或獨立的第二意見時，再把它們加進來。
+
 ## Handoff 模式
 
 ### 何時留在 Claude
@@ -45,6 +47,8 @@
 ✓ 背景處理
 ✓ 可以在你做其他事時執行的任務
 ```
+
+> Google 的 Gemini CLI README 現在註明 Gemini CLI 並未針對最新的 Gemini 模型最佳化，並建議改用 Antigravity CLI 搭配這些模型寫程式。下面基於檔案的 handoff 方式對任何 CLI 都同樣適用。
 
 ## 實際範例
 
@@ -183,6 +187,8 @@ Claude：[應用判斷]
    → 處理 edge cases
 ```
 
+這裡的 `.claude-checkpoint.json` 只是你請 Claude 寫出的一般檔案，不是 Claude Code 的功能。Claude Code 自己的 checkpoints（`Esc Esc`／`/rewind`）存在它的 session 內，其他 CLI 讀不到。
+
 ### 策略 3：Git Branch 隔離
 
 ```bash
@@ -199,6 +205,36 @@ git checkout feature/auth-refactor-analysis
 git merge feature/auth-refactor-impl
 # Claude 審查合併後的結果
 ```
+
+若要讓兩個 CLI 同時工作、又不共用同一個 checkout，就給每個 CLI 各自的 worktree：`claude --worktree <name>`、`codex --worktree` 和 `gemini --worktree` 都會在新的 git worktree 中啟動。
+
+### 策略 4：Headless Handoff
+
+每個 CLI 都有一次性的非互動模式，所以 handoff 可以寫成一段簡短的腳本：
+
+```bash
+# 安裝（macOS/Linux；Windows 和其他方式請見各專案的 README）
+curl -fsSL https://claude.ai/install.sh | bash          # Claude Code
+curl -fsSL https://chatgpt.com/codex/install.sh | sh    # Codex CLI（或 npm install -g @openai/codex）
+npm install -g @google/gemini-cli                       # Gemini CLI（或 brew install gemini-cli）
+
+# 1. Claude 規劃並寫出 handoff 檔案
+claude -p "Plan renaming UserAuth to Authentication; write the plan to handoff-context.md" \
+  --permission-mode acceptEdits
+
+# 2. Codex 進行機械式編輯，並儲存最後的摘要
+codex exec --sandbox workspace-write -o codex-summary.md \
+  "Follow handoff-context.md and perform the rename"
+
+# 3. Gemini 以 headless 模式審查計畫（-p 的提示會附加在 stdin 內容之後）
+cat handoff-context.md | gemini -p "List anything this rename plan misses" > gemini-notes.md
+
+# 4. Claude 驗證
+claude -p "Read codex-summary.md and gemini-notes.md, check for missed references, run the tests" \
+  --allowedTools "Bash(npm test *)"
+```
+
+每個 CLI 都保有自己的 session 歷史，一個 CLI 的 session 無法在另一個 CLI 中恢復，所以要靠 handoff 檔案傳遞脈絡。社群的 director-mode-lite plugin 把這個模式包裝成 `/session-relay`、`/handoff-codex` 和 `/handoff-gemini` skills：先執行 `/plugin marketplace add claude-world/director-mode-lite`，再執行 `/plugin install director-mode-lite@director-mode-lite`。
 
 ## 決策框架
 
@@ -304,6 +340,8 @@ Claude → Codex → 人工審查 → Claude 驗證
 ✓ 「Codex，在所有 200 個檔案中將 'foo' 重新命名為 'bar'」
   → 快速，非常適合機械式任務
 ```
+
+還是想留在 Claude Code？內建的 `/batch <instruction>` skill 會把大型機械式變更拆成多個平行單元，每個單元在各自的 worktree 中執行；而 `/model haiku` 或 `/effort low` 能讓簡單的處理更省成本。
 
 ### 不要：Handoffs 之間遺失脈絡
 

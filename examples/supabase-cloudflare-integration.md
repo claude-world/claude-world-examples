@@ -627,7 +627,9 @@ import react from '@astrojs/react';
 import tailwind from '@astrojs/tailwind';
 
 export default defineConfig({
-  output: 'hybrid',  // Static by default, SSR opt-in
+  // Astro 5+ removed 'hybrid': 'static' (the default) prerenders pages, and
+  // a page opts into SSR with `export const prerender = false`
+  output: 'static',
   adapter: cloudflare({
     platformProxy: {
       enabled: true,

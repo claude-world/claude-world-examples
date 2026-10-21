@@ -3,7 +3,8 @@
 # Runs on push and pull requests to main branch.
 # Includes build, lint, test, and validation jobs.
 #
-# Customize based on your project structure.
+# Customize based on your project structure. The npm steps use --if-present,
+# so a missing script is skipped while a failing one fails the job.
 
 name: CI
 
@@ -14,6 +15,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ========================================
   # Job 1: Validate Configuration
@@ -23,23 +31,30 @@ jobs:
     name: Validate Config
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      - name: Install validators
+        run: python -m pip install pyyaml
 
       - name: Validate JSON files
         run: |
           echo "Validating JSON files..."
           errors=0
 
-          for json in $(find . -name "*.json" -not -path "./node_modules/*" -not -path "./.git/*"); do
-            if python3 -c "import json; json.load(open('$json'))" 2>&1; then
-              echo "  $json"
+          while IFS= read -r -d '' file; do
+            if python -c 'import json, sys; json.load(open(sys.argv[1]))' "$file"; then
+              echo "  $file"
             else
-              echo "  $json - INVALID"
+              echo "  $file - INVALID"
               errors=$((errors + 1))
             fi
-          done
+          done < <(find . -name '*.json' -not -path './node_modules/*' -not -path './.git/*' -print0)
 
-          if [ $errors -gt 0 ]; then
+          if [ "$errors" -gt 0 ]; then
             echo "Found $errors invalid JSON files"
             exit 1
           fi
@@ -48,14 +63,14 @@ jobs:
         run: |
           echo "Validating YAML files..."
 
-          for yaml in $(find . -name "*.yml" -o -name "*.yaml" | grep -v node_modules | grep -v .git); do
-            if python3 -c "import yaml; yaml.safe_load(open('$yaml'))" 2>&1; then
-              echo "  $yaml"
+          while IFS= read -r -d '' file; do
+            if python -c 'import sys, yaml; list(yaml.safe_load_all(open(sys.argv[1])))' "$file"; then
+              echo "  $file"
             else
-              echo "  $yaml - INVALID"
+              echo "  $file - INVALID"
               exit 1
             fi
-          done
+          done < <(find . \( -name '*.yml' -o -name '*.yaml' \) -not -path './node_modules/*' -not -path './.git/*' -print0)
 
   # ========================================
   # Job 2: Build
@@ -65,38 +80,29 @@ jobs:
     name: Build
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
+      # Uncomment for pnpm (and set `cache: pnpm` below)
+      # - name: Setup pnpm
+      #   uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
-
-      # Uncomment for pnpm
-      # - name: Setup pnpm
-      #   uses: pnpm/action-setup@v4
-      #   with:
-      #     version: 9
-
-      - name: Cache dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
+          node-version: '24'
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
       - name: Build
-        run: npm run build
+        run: npm run build --if-present
         env:
           # Add any required build-time env vars
           NODE_ENV: production
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build
           path: dist/
@@ -110,23 +116,22 @@ jobs:
     name: Lint
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
       - name: Run ESLint
-        run: npm run lint || true
-        continue-on-error: true
+        run: npm run lint --if-present
 
       - name: Run Prettier check
-        run: npm run format:check || true
-        continue-on-error: true
+        run: npm run format:check --if-present
 
   # ========================================
   # Job 4: Test
@@ -136,26 +141,28 @@ jobs:
     name: Test
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
       - name: Run tests
-        run: npm test || echo "No tests configured"
+        run: npm test --if-present
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage
           path: coverage/
           retention-days: 7
+          if-no-files-found: ignore
 
   # ========================================
   # Job 5: Security Audit
@@ -165,16 +172,15 @@ jobs:
     name: Security Audit
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Audit dependencies
-        run: npm audit --audit-level=high || true
-        continue-on-error: true
+        run: npm audit --audit-level=high
 
   # ========================================
   # Job 6: Deploy (only on main)
@@ -186,10 +192,10 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: build
           path: dist/
@@ -199,7 +205,7 @@ jobs:
           echo "Deploying..."
           # Add your deployment commands here
           # Examples:
-          # - wrangler pages deploy ./dist (Cloudflare)
-          # - vercel --prod (Vercel)
-          # - netlify deploy --prod (Netlify)
+          # - npx wrangler pages deploy ./dist (Cloudflare)
+          # - npx vercel --prod (Vercel)
+          # - npx netlify deploy --prod (Netlify)
           echo "Deployment placeholder - customize for your platform"

@@ -5,20 +5,22 @@
 ## How to Use These Templates
 
 1. Copy the template for your tech stack
-2. Paste into `CLAUDE.md` at your project root
+2. Paste into `CLAUDE.md` (or `.claude/CLAUDE.md`) at your project root
 3. Customize the bracketed `[placeholders]`
-4. Remove sections that don't apply
+4. Remove sections that don't apply; in an existing codebase, also cut what Claude can see for itself (like a full directory tree) and keep conventions and gotchas
 5. Add project-specific rules
+
+Already ran `/init`? Merge in only the template sections that add something. Keep the result under ~200 lines, and run `/context` to confirm it loaded.
 
 ## Templates
 
 ### React + TypeScript
 
-```markdown
+````markdown
 # [Project Name]
 
 ## Tech Stack
-- React 18+ with TypeScript
+- React 19 with TypeScript
 - [State Management: Redux Toolkit / Zustand / Context]
 - [Styling: Tailwind CSS / styled-components / CSS Modules]
 - [Testing: Vitest / Jest + React Testing Library]
@@ -52,7 +54,7 @@ src/
 ### State Management
 - Local state for UI-only state
 - Global state for shared data
-- Server state with [React Query / SWR]
+- Server state with [TanStack Query / SWR]
 
 ## Testing
 - Run tests: `npm test`
@@ -66,17 +68,17 @@ npm run build    # Production build
 npm run test     # Run tests
 npm run lint     # Lint check
 ```
-```
+````
 
 ---
 
-### Next.js 14+ (App Router)
+### Next.js 16 (App Router)
 
-```markdown
+````markdown
 # [Project Name]
 
 ## Tech Stack
-- Next.js 14+ with App Router
+- Next.js 16 with App Router
 - TypeScript strict mode
 - [Database: Prisma / Drizzle + PostgreSQL]
 - [Auth: NextAuth.js / Clerk]
@@ -135,19 +137,19 @@ Required in `.env.local`:
 - `DATABASE_URL`
 - `NEXTAUTH_SECRET`
 - `NEXTAUTH_URL`
-```
+````
 
 ---
 
 ### Python + FastAPI
 
-```markdown
+````markdown
 # [Project Name]
 
 ## Tech Stack
 - Python 3.11+
 - FastAPI with Pydantic v2
-- SQLAlchemy 2.0 + PostgreSQL
+- SQLAlchemy 2.x + PostgreSQL
 - Alembic for migrations
 - pytest for testing
 
@@ -211,18 +213,18 @@ Required in `.env`:
 - `DATABASE_URL`
 - `SECRET_KEY`
 - `ENVIRONMENT` (development/production)
-```
+````
 
 ---
 
 ### Node.js + Express + TypeScript
 
-```markdown
+````markdown
 # [Project Name]
 
 ## Tech Stack
-- Node.js 20+ with TypeScript
-- Express.js
+- Node.js 24 LTS with TypeScript
+- Express 5
 - [Database: Prisma / TypeORM + PostgreSQL]
 - Jest for testing
 - Zod for validation
@@ -285,17 +287,17 @@ Required in `.env`:
 - `DATABASE_URL`
 - `JWT_SECRET`
 - `NODE_ENV`
-```
+````
 
 ---
 
 ### Go + Gin/Echo
 
-```markdown
+````markdown
 # [Project Name]
 
 ## Tech Stack
-- Go 1.21+
+- Go 1.26+
 - [Framework: Gin / Echo]
 - PostgreSQL with pgx
 - golang-migrate for migrations
@@ -351,8 +353,8 @@ go test ./...
 go test -cover ./...
 
 # Migrations
-migrate -path migrations -database $DATABASE_URL up
-migrate -path migrations -database $DATABASE_URL down 1
+migrate -path migrations -database "$DATABASE_URL" up
+migrate -path migrations -database "$DATABASE_URL" down 1
 ```
 
 ## Environment Variables
@@ -361,20 +363,20 @@ Required:
 - `DATABASE_URL`
 - `JWT_SECRET`
 - `ENVIRONMENT`
-```
+````
 
 ---
 
 ### Vue 3 + TypeScript
 
-```markdown
+````markdown
 # [Project Name]
 
 ## Tech Stack
 - Vue 3 with Composition API
 - TypeScript
 - [State: Pinia]
-- [Router: Vue Router 4]
+- [Router: Vue Router 5]
 - [UI: Vuetify / PrimeVue / Naive UI]
 - Vite
 
@@ -417,17 +419,17 @@ npm run preview  # Preview production
 npm run test     # Run tests
 npm run lint     # Lint check
 ```
-```
+````
 
 ---
 
 ### Astro + React/Vue
 
-```markdown
+````markdown
 # [Project Name]
 
 ## Tech Stack
-- Astro 4+
+- Astro 7
 - [UI Framework: React / Vue / Svelte]
 - Tailwind CSS
 - [CMS: Contentful / Sanity / MDX]
@@ -453,7 +455,7 @@ public/              # Static assets
 - Prefer `client:visible` for below-fold
 
 ### Content Collections
-- Define schemas in `src/content/config.ts`
+- Define collections in `src/content.config.ts`, each with a loader (e.g. `glob()`)
 - Use type-safe queries
 - Validate frontmatter
 
@@ -467,19 +469,19 @@ public/              # Static assets
 npm run dev      # Development server
 npm run build    # Production build
 npm run preview  # Preview production
-astro add [pkg]  # Add integration
+npx astro add [pkg]  # Add integration
 ```
-```
+````
 
 ---
 
 ### Django + DRF
 
-```markdown
+````markdown
 # [Project Name]
 
 ## Tech Stack
-- Python 3.11+ / Django 5+
+- Python 3.12+ / Django 6
 - Django REST Framework
 - PostgreSQL
 - Celery + Redis (background tasks)
@@ -539,8 +541,8 @@ python manage.py migrate
 pytest
 pytest --cov=apps
 
-# Shell
-python manage.py shell_plus
+# Shell (auto-imports your models)
+python manage.py shell
 ```
 
 ## Environment Variables
@@ -549,17 +551,17 @@ Required:
 - `DATABASE_URL`
 - `REDIS_URL`
 - `DJANGO_SETTINGS_MODULE`
-```
+````
 
 ---
 
 ### Ruby on Rails
 
-```markdown
+````markdown
 # [Project Name]
 
 ## Tech Stack
-- Ruby 3.2+ / Rails 7+
+- Ruby 3.3+ / Rails 8
 - PostgreSQL
 - [Frontend: Hotwire / React]
 - RSpec + FactoryBot
@@ -625,7 +627,7 @@ Required in `.env`:
 - `REDIS_URL`
 - `SECRET_KEY_BASE`
 - `RAILS_ENV`
-```
+````
 
 ---
 
@@ -672,6 +674,32 @@ Required in `.env`:
 - Docs: [URL]
 ```
 
+### Move Path-Specific Sections into Rules
+
+When a section only applies to part of the repo, such as the frontend in a monorepo, move it into `.claude/rules/` with `paths:` frontmatter so it loads only when Claude works on matching files:
+
+```markdown
+---
+paths:
+  - "apps/web/**/*.{ts,tsx}"
+---
+
+# Frontend Rules
+- Server Components by default; add 'use client' only when needed
+- Reuse components from `packages/ui` before writing new ones
+```
+
+### Share One File with Other Coding Agents
+
+If the repo already has an `AGENTS.md`, Claude Code reads it when there's no CLAUDE.md or CLAUDE.local.md. To add Claude-specific instructions on top, create a CLAUDE.md that imports it:
+
+```markdown
+@AGENTS.md
+
+## Claude Code
+- Use plan mode for changes under `src/billing/`
+```
+
 ## Summary
 
 1. **Start with a template** - Don't write from scratch
@@ -679,6 +707,7 @@ Required in `.env`:
 3. **Keep it updated** - CLAUDE.md is a living document
 4. **Be specific** - Vague instructions = inconsistent results
 5. **Include commands** - Claude needs to know how to run things
+6. **Enforce elsewhere** - CLAUDE.md is guidance; hard limits belong in `.claude/settings.json` permissions or hooks
 
 ---
 

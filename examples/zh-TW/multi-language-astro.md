@@ -563,7 +563,7 @@ Astro 的 sitemap 整合在設定後會自動添加 hreflang。
 ## 相關資源
 
 - [Astro i18n 文件](https://docs.astro.build/en/guides/internationalization/)
-- [48 小時網站案例研究](../case-studies/48-hour-website.md)
+- [48 小時網站案例研究](../../case-studies/zh-TW/48-hour-website.md)
 - [Astro 內容集合](https://docs.astro.build/en/guides/content-collections/)
 
 ---

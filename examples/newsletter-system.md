@@ -917,14 +917,17 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     if: github.repository == 'owner/repo'
+    permissions:
+      contents: write
+      pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Generate Newsletter Articles
         env:
@@ -932,12 +935,13 @@ jobs:
           VERSION: ${{ github.event.release.tag_name }}
           RELEASE_NAME: ${{ github.event.release.name }}
           RELEASE_URL: ${{ github.event.release.html_url }}
-          RELEASE_BODY_B64: ${{ github.event.release.body && toBase64(github.event.release.body) || '' }}
+          # Environment variables carry multi-line text as-is, so no encoding is needed
+          RELEASE_BODY: ${{ github.event.release.body }}
           NEWSLETTER_SLUG: release-${{ github.event.release.tag_name }}
         run: node scripts/generate-newsletter-from-release.js
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v8
         with:
           title: "Newsletter: ${{ github.event.release.tag_name }}"
           body: "Auto-generated newsletter for release ${{ github.event.release.tag_name }}"
@@ -966,12 +970,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install dependencies
         run: npm ci
@@ -1056,7 +1060,8 @@ project/
 
 - [Resend Documentation](https://resend.com/docs)
 - [Supabase RLS Guide](https://supabase.com/docs/guides/auth/row-level-security)
-- [GDPR Email Marketing](https://gdpr.eu/email-marketing/)
+- [GDPR Article 7: Conditions for consent](https://gdpr-info.eu/art-7-gdpr/)
+- [ICO guide to direct marketing (UK GDPR and PECR)](https://ico.org.uk/for-organisations/direct-marketing-and-privacy-and-electronic-communications/)
 - [Supabase + Cloudflare Integration](./supabase-cloudflare-integration.md)
 
 ---

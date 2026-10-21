@@ -46,6 +46,32 @@ Add this to every project:
 - Include request IDs for tracing
 ```
 
+### Secure Claude Code Itself
+
+CLAUDE.md guides what Claude tries to do; it doesn't enforce anything. Put hard limits in `.claude/settings.json`, which Claude Code enforces on every tool call:
+
+```json
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Bash(curl *)",
+      "Bash(git push --force *)"
+    ],
+    "ask": ["Bash(git push *)"]
+  }
+}
+```
+
+- **Deny rules** win over allow and ask rules. Use `Read(...)` and `Edit(...)` for files: `Write(...)` path rules are never consulted, and `.claudeignore` has no effect.
+- **Hooks** add checks that rules can't express, such as scanning staged changes for secrets before a commit. See [Hooks Patterns](../examples/hooks-patterns.md).
+- **`/sandbox`** adds OS-level filesystem and network isolation for Bash commands, which also covers scripts that open files themselves.
+- **Permission modes:** stay in the default (Manual) mode or `auto` mode for real repositories; keep `bypassPermissions` (`--dangerously-skip-permissions`) for disposable containers and VMs.
+- **MCP servers and plugins** run with your privileges. Install them only from sources you trust, and keep credentials in the local scope or environment variables.
+
 ## Common Vulnerabilities & Fixes
 
 ### 1. SQL Injection
@@ -238,17 +264,19 @@ app.use(helmet.contentSecurityPolicy({
 "Run a security scan on this codebase checking for OWASP Top 10 vulnerabilities"
 ```
 
-Claude will check for:
-- Injection flaws
-- Broken authentication
-- Sensitive data exposure
-- XXE
+Claude will check for the OWASP Top 10 (2021 edition):
 - Broken access control
+- Cryptographic failures (sensitive data exposure)
+- Injection, including XSS
+- Insecure design
 - Security misconfiguration
-- XSS
-- Insecure deserialization
-- Known vulnerable components
-- Insufficient logging
+- Vulnerable and outdated components
+- Identification and authentication failures
+- Software and data integrity failures (including insecure deserialization)
+- Security logging and monitoring failures
+- Server-side request forgery (SSRF)
+
+For the changes on your current branch, run the built-in `/security-review` command; it reviews the branch diff, not the whole codebase.
 
 ### Step 2: Authentication Review
 
@@ -352,8 +380,10 @@ Claude will check for:
 
 ### Pre-Commit Security Review
 ```
-"Review these changes for security issues before I commit"
+/security-review
 ```
+
+Or ask in plain language: "Review these changes for security issues before I commit".
 
 ### Dependency Vulnerability Check
 ```
@@ -433,7 +463,8 @@ if (!API_KEY) throw new Error('API_KEY required');
 6. **Never log sensitive data** - Passwords, tokens, PII
 7. **Use security headers** - helmet, CSP, HSTS
 8. **Keep dependencies updated** - Regular npm audit
-9. **Regular security reviews** - Use Claude for automated scanning
+9. **Regular security reviews** - Use Claude for automated scanning and `/security-review` before merging
+10. **Lock down Claude Code itself** - Deny rules for secrets, hooks for checks, `/sandbox` for isolation
 
 **Golden Rule**: Assume all input is malicious until validated.
 

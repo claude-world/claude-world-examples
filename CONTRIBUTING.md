@@ -149,6 +149,25 @@ See also: [Related Topic](./link.md)
 - Use syntax highlighting | 使用語法高亮
 - Keep examples concise | 保持範例簡潔
 - Include comments for clarity | 包含註解以增加清晰度
+- `json` code blocks must be valid JSON; use `jsonc` for snippets with comments or `...` | `json` 程式碼區塊必須是有效 JSON；含註解或 `...` 的片段請用 `jsonc`
+- Use current model IDs (`claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-opus-5-5`) | 使用目前的模型 ID
+
+### Run the Checks Locally | 在本機執行檢查
+
+CI runs these on every pull request | CI 會在每個 pull request 執行以下檢查：
+
+```bash
+# YAML style and workflow lint (actionlint uses shellcheck when installed)
+yamllint --strict .
+actionlint templates/github-actions-suite/*.yml templates/release-monitor-workflow.yml .github/workflows/*.yml
+
+# JSON/YAML code blocks in Markdown, plus workflows embedded in Markdown
+python3 -m pip install pyyaml
+python3 .github/scripts/check_code_blocks.py --actionlint
+
+# Links
+lychee --config lychee.toml './**/*.md'
+```
 
 ---
 

@@ -8,25 +8,26 @@ When you ask Claude for topic ideas without live signals, the answer is usually 
 
 ## Project MCP Configuration
 
-Add a project-scoped server to `.mcp.json`:
+[`trend-pulse`](https://github.com/claude-world/trend-pulse) is free and needs no API key. Add it as a project-scoped server with [uv](https://docs.astral.sh/uv/) installed:
+
+```bash
+claude mcp add --scope project trend-pulse -- uvx --from "trend-pulse[mcp]" trend-pulse-server
+```
+
+That writes this entry to `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "trend-pulse": {
-      "command": "<trend-pulse-mcp-command>",
-      "args": ["<provider-arg-1>", "<provider-arg-2>"],
-      "env": {
-        "TREND_PULSE_API_KEY": "${TREND_PULSE_API_KEY}",
-        "TREND_PULSE_DEFAULT_REGION": "US",
-        "TREND_PULSE_DEFAULT_LANGUAGE": "en"
-      }
+      "command": "uvx",
+      "args": ["--from", "trend-pulse[mcp]", "trend-pulse-server"]
     }
   }
 }
 ```
 
-Replace the command and args with the launcher from your `trend-pulse` provider. The prompts below assume the server exposes `get_trending` and `search_trends`.
+`get_trending` takes optional `sources` (comma-separated, such as `hackernews,github,reddit`), `geo` (a country code such as `US` or `TW`), and `count`. `search_trends` takes a `query` plus the same `sources` and `geo`. Both report what is trending now; for momentum over days, save snapshots (`save: true` or `take_snapshot`) and query `get_trend_history` or `compare_trends`.
 
 ## Basic Workflow
 
@@ -41,7 +42,7 @@ Replace the command and args with the launcher from your `trend-pulse` provider.
 ```text
 Use the trend-pulse MCP server.
 
-1. Call `get_trending` for the United States over the last 24 hours.
+1. Call `get_trending` with geo `US` and sources `hackernews,github,devto,reddit,producthunt`.
 2. Keep only AI, developer tools, browser automation, and Cloudflare-related topics.
 3. Group near-duplicate topics together.
 4. Return the top 8 opportunities with:
@@ -54,7 +55,7 @@ Use the trend-pulse MCP server.
 ### 2. Compare candidate ideas before writing
 
 ```text
-Use `search_trends` to compare these topics in the US over the last 30 days:
+Use `search_trends` with geo `US` to compare current signals for these topics:
 - Claude Code
 - Model Context Protocol
 - Browser automation
@@ -65,13 +66,15 @@ Show which topic has:
 - the steadiest interest
 - the weakest signal
 
+If saved snapshots exist, add `compare_trends` for the top two to see 30-day momentum.
+
 Then recommend one topic for a tutorial and explain why.
 ```
 
 ### 3. Turn broad trends into a short action list
 
 ```text
-Use `get_trending` for the last 7 days, then use `search_trends` to validate the three most relevant developer-tool topics.
+Use `get_trending` with geo `US` and `save: true`, then use `search_trends` to validate the three most relevant developer-tool topics.
 
 Return a table with:
 - topic
@@ -86,7 +89,8 @@ Use `get_trending` first when you do not know what to explore. Use `search_trend
 
 ## Best Practices
 
-- Be explicit about region and time window. "Trending" without scope is too vague.
+- Be explicit about region (`geo`) and sources. "Trending" without scope is too vague.
+- Save snapshots regularly if you want trends over time; `get_trend_history` only sees what was saved.
 - Ask Claude to merge near-duplicate terms before ranking them.
 - Compare at least 3 candidate terms with `search_trends` before committing to a content plan.
 - Ask for "durable vs. short-lived" so hype spikes do not dominate the recommendation.

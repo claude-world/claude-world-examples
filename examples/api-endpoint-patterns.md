@@ -137,7 +137,9 @@ import { defineConfig } from 'astro/config';
 import cloudflare from '@astrojs/cloudflare';
 
 export default defineConfig({
-  output: 'hybrid',  // Static by default, SSR opt-in via prerender = false
+  // Astro 5+ removed 'hybrid': 'static' (the default) prerenders pages, and
+  // an endpoint opts into SSR with `export const prerender = false`
+  output: 'static',
   adapter: cloudflare({
     platformProxy: {
       enabled: true,  // Enable local dev with Cloudflare features
@@ -1453,7 +1455,7 @@ src/
 - [Astro API Routes Documentation](https://docs.astro.build/en/guides/endpoints/)
 - [Cloudflare Pages Functions](https://developers.cloudflare.com/pages/functions/)
 - [Cloudflare Rate Limiting](https://developers.cloudflare.com/waf/rate-limiting-rules/)
-- [OWASP API Security](https://owasp.org/www-project-api-security/)
+- [OWASP API Security](https://owasp.org/API-Security/)
 - [Supabase + Cloudflare Integration](./supabase-cloudflare-integration.md)
 - [Newsletter System](./newsletter-system.md)
 

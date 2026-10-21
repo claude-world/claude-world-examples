@@ -6,7 +6,7 @@
 
 | Section | Content |
 |---------|---------|
-| [What are Agents?](#what-are-agents) | Understanding subagents and Task tool |
+| [What are Agents?](#what-are-agents) | Understanding subagents and the Agent tool |
 | [When to Create](#when-to-create-custom-agents) | Built-in vs custom agents |
 | [File Structure](#agent-file-structure) | YAML frontmatter + markdown format |
 | [Best Practices](#best-practices-for-agent-prompts) | Writing effective agent prompts |
@@ -16,40 +16,43 @@
 
 ## What are Agents?
 
-Agents (also called subagents) are specialized Claude instances spawned via the **Task tool**. Each agent has:
+Agents (also called subagents) are specialized Claude instances spawned via the **Agent tool** (named `Task` before Claude Code v2.1.63; `Task` still works as an alias). Each agent has:
 
-- **Focused expertise** - Defined role and responsibilities
+- **Focused expertise** - Defined role and responsibilities (its system prompt)
 - **Specific tools** - Only the tools it needs
 - **Clear output** - Structured response format
-- **Activation triggers** - When to automatically engage
+- **Delegation triggers** - A `description` that tells Claude when to hand work to it
 
 ```
 Main Claude Instance
        │
-       ├── Task(code-reviewer) ─► Reviews code quality
-       ├── Task(debugger) ─► Investigates bugs
-       ├── Task(doc-writer) ─► Creates documentation
-       └── Task(security-auditor) ─► Checks vulnerabilities
+       ├── Agent(code-reviewer) ─► Reviews code quality
+       ├── Agent(debugger) ─► Investigates bugs
+       ├── Agent(doc-writer) ─► Creates documentation
+       └── Agent(security-auditor) ─► Checks vulnerabilities
 ```
 
 ### How Agents Work
 
-When you invoke an agent, Claude Code:
+When Claude delegates to an agent, Claude Code:
 
-1. Reads the agent definition from `.claude/agents/`
-2. Creates a new context with the agent's system prompt
-3. Grants only the specified tools
-4. Executes the task with focused expertise
-5. Returns results to the main conversation
+1. Loads the agent definition (from `.claude/agents/`, `~/.claude/agents/`, a plugin, or the `--agents` flag)
+2. Starts a fresh context window with the agent's Markdown body as its system prompt (plus your CLAUDE.md files, unless the agent sets `omitClaudeMd: true`)
+3. Grants only the tools the definition allows
+4. Runs the task from Claude's delegation prompt, on the agent's model and effort level
+5. Returns only the agent's final result to the main conversation
 
-**Conceptual Task tool syntax:**
+The agent never sees your conversation history, only the prompt Claude writes for it.
+
+**Conceptual Agent tool syntax:**
 
 ```javascript
-Task({
-  subagent_type: "agent-name",    // Agent to invoke
-  model: "sonnet",                 // Optional: haiku, sonnet, opus
+Agent({
+  subagent_type: "agent-name",     // Agent to invoke (its frontmatter name)
+  description: "Short task label", // Shown in the transcript
   prompt: "Your specific task",    // What to do
-  run_in_background: false         // Optional: async execution
+  model: "sonnet",                 // Optional: overrides the agent's model for this call
+  run_in_background: true          // Optional: the default for agents spawned from the main conversation
 })
 ```
 
@@ -57,15 +60,13 @@ Task({
 
 | Built-in Agents | Purpose |
 |-----------------|---------|
-| `Explore` | Fast codebase navigation (Haiku) |
-| `general-purpose` | Complex multi-step tasks |
-| `code-reviewer` | Code quality analysis |
-| `security-auditor` | Vulnerability detection |
-| `test-runner` | Test execution |
-| `debugger` | Root cause analysis |
-| `doc-writer` | Documentation |
+| `Explore` | Fast, read-only codebase search (runs on your main model) |
+| `Plan` | Read-only research during plan mode |
+| `general-purpose` | Complex multi-step tasks (all tools) |
 
-**Custom agents** extend these with project-specific expertise.
+Claude Code also has helper agents it uses automatically: `claude` (catch-all), `statusline-setup`, and `claude-code-guide`.
+
+**Custom agents** extend these with project-specific expertise. Familiar names such as `code-reviewer`, `security-auditor`, `test-runner`, `debugger`, and `doc-writer` are custom agents too: you define them in `.claude/agents/` or install them with a plugin (for example, [Director Mode Lite](https://github.com/claude-world/director-mode-lite) ships `code-reviewer`, `debugger`, and `doc-writer`).
 
 ## When to Create Custom Agents
 
@@ -76,13 +77,14 @@ Task({
 3. **Consistent output format** - Standardized results required
 4. **Team workflow** - Shared processes across developers
 5. **Complex multi-step procedures** - Documented process to follow
+6. **Tool limits** - The task should run with restricted tools or permissions
 
 ### Use Built-in Agents When:
 
 1. **General coding tasks** - Standard development work
 2. **One-off operations** - Not repeated often
 3. **Simple searches** - Basic file/pattern matching
-4. **Standard reviews** - Generic code quality checks
+4. **Standard reviews** - Generic checks that Claude Code's `/code-review` and `/security-review` commands already cover
 
 ### Decision Matrix
 
@@ -90,14 +92,24 @@ Task({
 |----------|----------------|
 | "Review this PR for our coding standards" | Custom: `project-reviewer` |
 | "Find all TypeScript files" | Built-in: `Explore` |
-| "Check for security issues" | Built-in: `security-auditor` |
+| "Check for security issues" | Built-in: `/security-review` (or a custom `security-auditor`) |
 | "Generate API docs in our format" | Custom: `api-doc-generator` |
-| "Debug this error" | Built-in: `debugger` |
+| "Debug this error" | Built-in: `general-purpose` (or a custom `debugger`) |
 | "Migrate data using our process" | Custom: `data-migrator` |
 
 ## Agent File Structure
 
-Agents are markdown files with YAML frontmatter, stored in `.claude/agents/`.
+Agents are Markdown files with YAML frontmatter. Where a file lives decides who can use it:
+
+| Location | Scope |
+|----------|-------|
+| `.claude/agents/` | Current project (commit it to share with your team) |
+| `~/.claude/agents/` | All your projects |
+| Plugin `agents/` directory | Wherever the plugin is enabled, under a scoped name such as `my-plugin:reviewer` |
+| `claude --agents '{...}'` | Current session only (JSON definitions) |
+| Managed settings | Organization-wide |
+
+When two definitions share a name, managed settings win, then `--agents`, then project, then user, then plugin.
 
 ### File Location
 
@@ -114,10 +126,10 @@ your-project/
 
 ### Complete Format
 
-```markdown
+````markdown
 ---
 name: agent-name
-description: Brief description shown in agent list. Keep under 100 chars.
+description: What this agent does and when to use it. Use proactively when [trigger 1] or [trigger 2].
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 ---
@@ -125,13 +137,6 @@ model: sonnet
 # Agent Name
 
 You are a [role description]. You help users with [specific tasks].
-
-## Activation
-
-Automatically activate when:
-- [Trigger condition 1]
-- [Trigger condition 2]
-- [Trigger condition 3]
 
 ## Core Knowledge
 
@@ -171,16 +176,33 @@ When invoked:
 - [Guideline 1]
 - [Guideline 2]
 - [Guideline 3]
-```
+````
 
 ### Frontmatter Fields
 
+Only `name` and `description` are required. Field names are camelCase and must match exactly; Claude Code silently ignores fields it doesn't recognize.
+
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | Yes | Unique identifier (kebab-case) |
-| `description` | Yes | Brief description (<100 chars) |
-| `tools` | Yes | Comma-separated tool list |
-| `model` | No | `haiku`, `sonnet` (default), or `opus` |
+| `name` | Yes | Unique identifier, e.g. `code-reviewer` (kebab-case recommended; no `:`) |
+| `description` | Yes | When Claude should delegate to this agent. Keep it short and specific |
+| `tools` | No | Allowlist, as a comma-separated string or YAML list. Omit it to inherit every tool available to subagents |
+| `disallowedTools` | No | Denylist, removed from the inherited or listed tools |
+| `model` | No | `sonnet`, `opus`, `haiku`, `fable`, `inherit`, or a full model ID such as `claude-opus-5-5`. Omitted: the main conversation's model (or `CLAUDE_CODE_SUBAGENT_MODEL`) |
+| `permissionMode` | No | `default`, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, or `plan` |
+| `maxTurns` | No | Maximum agentic turns before the agent stops |
+| `skills` | No | Skills whose full content is preloaded into the agent's context |
+| `mcpServers` | No | MCP servers for this agent only (names of configured servers or inline definitions) |
+| `hooks` | No | Lifecycle hooks that run only while this agent is active |
+| `memory` | No | Persistent memory scope: `user`, `project`, or `local` |
+| `background` | No | `true` keeps the agent in the background even when Claude would wait for it |
+| `effort` | No | `low`, `medium`, `high`, `xhigh`, or `max` while this agent runs |
+| `isolation` | No | `worktree` runs the agent in a temporary git worktree |
+| `color` | No | Display color in the task list and transcript |
+| `initialPrompt` | No | First user turn, auto-submitted when the agent runs as the main session (`claude --agent`) |
+| `omitClaudeMd` | No | `true` starts the agent without your user, project, and local CLAUDE.md files |
+
+Plugin agents ignore `hooks`, `mcpServers`, and `permissionMode`; copy the file into `.claude/agents/` if you need them.
 
 ### Available Tools
 
@@ -192,10 +214,12 @@ When invoked:
 | `Bash` | Execute shell commands | Test runners, builders |
 | `Grep` | Search file contents | Analyzers |
 | `Glob` | Find files by pattern | Explorers |
-| `Task` | Spawn sub-agents | Orchestrators |
+| `Agent` | Spawn sub-agents (formerly `Task`) | Orchestrators |
 | `WebFetch` | Fetch web content | Documentation agents |
 | `WebSearch` | Search the web | Research agents |
 | `TodoWrite` | Manage task lists | Project managers |
+
+MCP tools work too: `mcp__github__*` grants every tool from the `github` server.
 
 ### Tool Selection Guidelines
 
@@ -212,8 +236,12 @@ Use for: Generators, updaters
 tools: Read, Write, Edit, Bash, Grep, Glob
 Use for: Fixers, builders, migrators
 
+# Everything except file writes
+disallowedTools: Write, Edit
+Use for: Investigators that still need Bash and MCP tools
+
 # Orchestrator agents
-tools: Read, Grep, Glob, Task
+tools: Read, Grep, Glob, Agent
 Use for: Coordinators that delegate to other agents
 ```
 
@@ -241,22 +269,20 @@ You run project tests and provide detailed failure analysis.
 ---
 name: code-helper
 description: Reviews code, writes tests, fixes bugs, generates docs
-tools: All tools
+# no tools field: inherits every tool
 ---
 ```
 
 ### 2. Clear Activation Triggers
 
-Define when the agent should activate.
+Claude reads only the `description` when deciding whether to delegate. The Markdown body is the agent's system prompt and loads only once the agent runs, so put the triggers in the description. Phrases such as "use proactively" encourage Claude to delegate on its own.
 
 ```markdown
-## Activation
-
-Automatically activate when:
-- User runs tests and they fail
-- User mentions "test", "coverage", "failing"
-- User asks to verify changes work
-- After significant code changes
+---
+name: test-runner
+description: Runs tests and analyzes failures. Use proactively after significant code changes, when tests fail, or when the user mentions tests, coverage, or failing builds.
+tools: Read, Bash, Grep
+---
 ```
 
 ### 3. Structured Process
@@ -291,7 +317,7 @@ Document step-by-step methodology.
 
 Define exactly what output looks like.
 
-```markdown
+````markdown
 ## Output Format
 
 ```markdown
@@ -312,7 +338,7 @@ Define exactly what output looks like.
 ### Code Changes (if any)
 [Diff or file list]
 ```
-```
+````
 
 ### 5. Domain-Specific Knowledge
 
@@ -353,16 +379,22 @@ Use for: Code review, implementation, debugging
 # Complex reasoning
 model: opus
 Use for: Architecture decisions, security audits
+
+# Same model as the main conversation
+model: inherit
+Use for: Agents that should follow whatever you picked with /model
 ```
+
+Pair `model` with `effort` (`low` through `max`) to tune how deeply the agent reasons.
 
 ## Agent Examples
 
 ### Example 1: Code Reviewer (Read-Only)
 
-```markdown
+````markdown
 ---
 name: code-reviewer
-description: Reviews code for quality, patterns, and best practices
+description: Reviews code for quality, patterns, and best practices. Use proactively after code changes, for PR reviews, or when the user asks for feedback on code.
 tools: Read, Grep, Glob
 model: sonnet
 ---
@@ -370,13 +402,6 @@ model: sonnet
 # Code Reviewer Agent
 
 You are a senior developer conducting code review. Focus on maintainability, patterns, and potential issues.
-
-## Activation
-
-Automatically activate when:
-- User mentions "review", "PR", "pull request"
-- User asks for feedback on code
-- Before merging to main branch
 
 ## Review Checklist
 
@@ -432,14 +457,14 @@ Automatically activate when:
 - Explain WHY something is an issue
 - Suggest specific fixes
 - Acknowledge good code
-```
+````
 
 ### Example 2: Debugger (Investigation)
 
-```markdown
+````markdown
 ---
 name: debugger
-description: Systematic root cause analysis for errors and unexpected behavior
+description: Systematic root cause analysis for errors and unexpected behavior. Use proactively when stack traces appear, tests fail unexpectedly, or the user reports a bug.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
@@ -447,14 +472,6 @@ model: sonnet
 # Debugger Agent
 
 You are an expert debugger specializing in systematic root cause analysis.
-
-## Activation
-
-Automatically activate when:
-- Error messages or stack traces appear
-- Tests fail unexpectedly
-- User mentions "bug", "error", "not working", "debug"
-- Unexpected behavior observed
 
 ## Methodology
 
@@ -522,14 +539,16 @@ Automatically activate when:
 ### Testing
 [How to verify the fix]
 ```
-```
+````
+
+This version has no `Edit` tool, so it diagnoses and proposes the fix. Add `Edit` to `tools` if it should apply fixes itself.
 
 ### Example 3: API Doc Generator (Write)
 
-```markdown
+`````markdown
 ---
 name: api-doc-generator
-description: Generates API documentation from code in OpenAPI format
+description: Generates API documentation from code in OpenAPI format. Use when the user asks for API docs, OpenAPI, or Swagger, or after endpoints are added or changed.
 tools: Read, Write, Grep, Glob
 model: sonnet
 ---
@@ -537,13 +556,6 @@ model: sonnet
 # API Documentation Generator
 
 You generate comprehensive API documentation by analyzing code.
-
-## Activation
-
-Automatically activate when:
-- User mentions "API docs", "OpenAPI", "Swagger"
-- New endpoints are added
-- API changes are made
 
 ## Process
 
@@ -569,7 +581,7 @@ Automatically activate when:
 
 ## Documentation Format
 
-```markdown
+````markdown
 ## [METHOD] /api/v1/[resource]
 
 [Brief description of what this endpoint does]
@@ -615,7 +627,7 @@ curl -X METHOD https://api.example.com/api/v1/resource \
   -H "Authorization: Bearer TOKEN" \
   -d '{"field": "value"}'
 ```
-```
+````
 
 ## Guidelines
 
@@ -623,14 +635,14 @@ curl -X METHOD https://api.example.com/api/v1/resource \
 - Include all possible error codes
 - Provide working curl examples
 - Follow existing documentation style
-```
+`````
 
 ### Example 4: Database Migration Agent (Full Access)
 
-```markdown
+`````markdown
 ---
 name: db-migrator
-description: Manages database schema migrations safely
+description: Manages database schema migrations safely. Use when the user mentions a migration, schema change, or ALTER TABLE, or when new models are added.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 ---
@@ -638,13 +650,6 @@ model: sonnet
 # Database Migration Agent
 
 You manage database schema changes through migrations.
-
-## Activation
-
-Automatically activate when:
-- User mentions "migration", "schema change", "alter table"
-- Database structure needs modification
-- New models are added
 
 ## Safety Rules
 
@@ -690,7 +695,7 @@ DROP TABLE IF EXISTS table_name;
 
 ## Output Format
 
-```markdown
+````markdown
 ## Migration Plan
 
 ### Changes
@@ -710,7 +715,7 @@ WHERE table_name = 'table_name';
 ```bash
 npm run migrate:down
 ```
-```
+````
 
 ## Guidelines
 
@@ -718,27 +723,23 @@ npm run migrate:down
 - Descriptive migration names
 - Always test rollback
 - Document breaking changes
-```
+`````
+
+For hard guarantees (for example, blocking `DROP` against production), back the prompt with a `PreToolUse` hook in the agent's `hooks` field or a permission deny rule; the prompt alone is guidance, not enforcement.
 
 ### Example 5: Orchestrator Agent (Delegates to Others)
 
-```markdown
+````markdown
 ---
 name: pr-reviewer
-description: Orchestrates comprehensive PR review using multiple agents
-tools: Read, Grep, Glob, Task
+description: Orchestrates a comprehensive PR review using multiple agents. Use when the user asks for a full or comprehensive PR review, or before merging significant changes.
+tools: Agent(code-reviewer, security-auditor, test-runner, doc-writer), Read, Grep, Glob, Bash
 model: sonnet
 ---
 
 # PR Review Orchestrator
 
 You coordinate comprehensive pull request reviews by delegating to specialized agents.
-
-## Activation
-
-Automatically activate when:
-- User mentions "full review", "comprehensive PR review"
-- Before merging significant changes
 
 ## Process
 
@@ -762,20 +763,21 @@ Automatically activate when:
 
 ```javascript
 // Phase 1: Parallel analysis
-Task({
+Agent({
   subagent_type: "code-reviewer",
-  model: "sonnet",
+  description: "Review code quality",
   prompt: "Review code quality for changes in: [file list]"
 })
 
-Task({
+Agent({
   subagent_type: "security-auditor",
-  model: "sonnet",
+  description: "Check security",
   prompt: "Check security for: [file list]"
 })
 
-Task({
+Agent({
   subagent_type: "test-runner",
+  description: "Analyze test coverage",
   model: "haiku",
   prompt: "Analyze test coverage for changed files"
 })
@@ -809,7 +811,9 @@ Task({
 ### Verdict
 [Approve / Request Changes]
 ```
-```
+````
+
+The `Agent(...)` allowlist in `tools` applies when this agent runs as the main session (`claude --agent pr-reviewer`). As a regular subagent, `Agent` in `tools` simply allows nested delegation (up to three levels below the main conversation by default), and the type list is ignored.
 
 ## Configuring Agents
 
@@ -823,16 +827,24 @@ mkdir -p .claude/agents
 touch .claude/agents/my-agent.md
 ```
 
+Or ask Claude to write it: "Create a project subagent in .claude/agents/ that reviews migrations and uses Sonnet." In current Claude Code, `/agents` prints a reminder of these two options (on v2.1.197 and earlier it opened an interactive manager). Claude Code watches the agents directories and picks up edits within seconds; restart only after creating a scope's first `agents` directory during a session.
+
 ### Project Settings
+
+No setting is needed to enable custom agents: Claude Code loads every file in `.claude/agents/` automatically. Settings control which agents Claude may use.
 
 `.claude/settings.json`:
 ```json
 {
-  "agents": {
-    "enabled": true
+  "permissions": {
+    "deny": ["Agent(Explore)", "Agent(legacy-reviewer)"]
   }
 }
 ```
+
+- `Agent(name)` in `permissions.deny` stops Claude from delegating to that agent; it works for built-in and custom agents (`Task(name)` still works as an alias)
+- `"agent": "code-reviewer"` in settings runs the whole session as that agent, the same as `claude --agent code-reviewer`
+- `CLAUDE_CODE_SUBAGENT_MODEL` sets a default model for subagents that don't specify one
 
 ### Sharing Agents
 
@@ -840,10 +852,11 @@ Agents in `.claude/agents/` are project-specific and can be:
 - **Committed to git** - Shared with team
 - **Copied between projects** - Reusable templates
 - **Stored in user directory** - Personal agents at `~/.claude/agents/`
+- **Packaged in a plugin** - Put them in a plugin's `agents/` directory to share across repositories
 
 ### Agent Organization
 
-For large projects with many agents:
+For large projects with many agents, Claude Code scans `.claude/agents/` recursively, so subfolders are fine. Identity comes only from the `name` field, so keep names unique across the tree:
 
 ```
 .claude/
@@ -883,9 +896,9 @@ Focus on security implications."
 ### 2. Provide Context
 
 ```javascript
-Task({
+Agent({
   subagent_type: "code-reviewer",
-  model: "sonnet",
+  description: "Review Stripe payments",
   prompt: `
     Context:
     - Project: E-commerce platform
@@ -906,11 +919,11 @@ For independent tasks, spawn multiple agents:
 
 ```javascript
 // All run simultaneously
-Task({ subagent_type: "code-reviewer", prompt: "Review code quality" })
-Task({ subagent_type: "security-auditor", prompt: "Check security" })
-Task({ subagent_type: "test-runner", prompt: "Analyze coverage" })
+Agent({ subagent_type: "code-reviewer", description: "Review quality", prompt: "Review code quality" })
+Agent({ subagent_type: "security-auditor", description: "Check security", prompt: "Check security" })
+Agent({ subagent_type: "test-runner", description: "Analyze coverage", prompt: "Analyze coverage" })
 
-// Time = max(individual times), not sum
+// Wall-clock time approaches the slowest agent, not the sum
 ```
 
 ### 4. Chain Dependent Tasks
@@ -929,11 +942,11 @@ Phase 3: Review agents (verify Phase 2)
 
 | Task Complexity | Model | Agent Type |
 |----------------|-------|------------|
-| File search | Haiku | Explore |
+| File search | Main model, or Haiku via your own `Explore` | Explore |
 | Pattern matching | Haiku | Custom scanner |
 | Standard implementation | Sonnet | general-purpose |
-| Code review | Sonnet | code-reviewer |
-| Security audit | Sonnet/Opus | security-auditor |
+| Code review | Sonnet | code-reviewer (custom) |
+| Security audit | Sonnet/Opus | security-auditor (custom) |
 | Architecture design | Opus | Custom architect |
 
 ### 6. Request Structured Output
@@ -955,10 +968,10 @@ Ask for specific format:
 Launch multiple Explore agents in parallel:
 
 ```javascript
-Task({ subagent_type: "Explore", prompt: "Map auth file structure" })
-Task({ subagent_type: "Explore", prompt: "Find JWT patterns" })
-Task({ subagent_type: "Explore", prompt: "Analyze middleware" })
-Task({ subagent_type: "Explore", prompt: "Check auth tests" })
+Agent({ subagent_type: "Explore", description: "Map auth files", prompt: "Map auth file structure" })
+Agent({ subagent_type: "Explore", description: "Find JWT patterns", prompt: "Find JWT patterns" })
+Agent({ subagent_type: "Explore", description: "Analyze middleware", prompt: "Analyze middleware" })
+Agent({ subagent_type: "Explore", description: "Check auth tests", prompt: "Check auth tests" })
 ```
 
 ### Pattern 2: Implementation + Review
@@ -967,11 +980,11 @@ Build, then verify:
 
 ```javascript
 // Phase 1: Build
-Task({ subagent_type: "general-purpose", prompt: "Implement feature X" })
+Agent({ subagent_type: "general-purpose", description: "Implement feature X", prompt: "Implement feature X" })
 
 // Phase 2: Verify (parallel)
-Task({ subagent_type: "code-reviewer", prompt: "Review implementation" })
-Task({ subagent_type: "test-runner", prompt: "Run tests" })
+Agent({ subagent_type: "code-reviewer", description: "Review implementation", prompt: "Review implementation" })
+Agent({ subagent_type: "test-runner", description: "Run tests", prompt: "Run tests" })
 ```
 
 ### Pattern 3: Bug Investigation
@@ -979,10 +992,12 @@ Task({ subagent_type: "test-runner", prompt: "Run tests" })
 Parallel hypothesis testing:
 
 ```javascript
-Task({ subagent_type: "Explore", prompt: "Check session handling" })
-Task({ subagent_type: "Explore", prompt: "Look for race conditions" })
-Task({ subagent_type: "Explore", prompt: "Review error logs" })
-Task({ subagent_type: "debugger", prompt: "Synthesize and find root cause" })
+Agent({ subagent_type: "Explore", description: "Check sessions", prompt: "Check session handling" })
+Agent({ subagent_type: "Explore", description: "Find race conditions", prompt: "Look for race conditions" })
+Agent({ subagent_type: "Explore", description: "Review error logs", prompt: "Review error logs" })
+
+// Then, with the findings in hand:
+Agent({ subagent_type: "debugger", description: "Find root cause", prompt: "Synthesize and find root cause" })
 ```
 
 ### Pattern 4: Documentation Suite
@@ -990,24 +1005,28 @@ Task({ subagent_type: "debugger", prompt: "Synthesize and find root cause" })
 Generate multiple docs:
 
 ```javascript
-Task({ subagent_type: "doc-writer", prompt: "Update README" })
-Task({ subagent_type: "api-doc-generator", prompt: "Generate API docs" })
-Task({ subagent_type: "doc-writer", prompt: "Add inline comments" })
+Agent({ subagent_type: "doc-writer", description: "Update README", prompt: "Update README" })
+Agent({ subagent_type: "api-doc-generator", description: "Generate API docs", prompt: "Generate API docs" })
+Agent({ subagent_type: "doc-writer", description: "Add inline comments", prompt: "Add inline comments" })
 ```
 
 ## Troubleshooting
 
 ### Agent Not Found
 
-```
-Error: Agent 'my-agent' not found
+Claude says the agent doesn't exist, or never delegates to it.
+
+**Solution:** Verify the file exists at `.claude/agents/my-agent.md`, that the opening `---` is on its first line, and that the frontmatter has both `name` and `description` (Claude Code silently skips a file missing either). Check that the YAML parses:
+
+```bash
+claude plugin validate .claude/agents
 ```
 
-**Solution:** Verify file exists at `.claude/agents/my-agent.md` with correct frontmatter.
+Run `claude --debug` to see skip reasons in the debug log, and restart if you created the `agents` directory during the session.
 
 ### Agent Not Using Specified Tools
 
-**Solution:** Check `tools` field in frontmatter. Must be comma-separated, valid tool names.
+**Solution:** Check the `tools` field: a comma-separated string or YAML list of valid tool names. Subagents running in the background (the default) get a reduced built-in tool set, so a tool outside that set is dropped without an error.
 
 ### Agent Producing Inconsistent Output
 
@@ -1016,16 +1035,24 @@ Error: Agent 'my-agent' not found
 ### Agent Taking Too Long
 
 **Solution:**
-- Use `model: haiku` for simpler tasks
+- Use `model: haiku` or `effort: low` for simpler tasks
 - Break complex tasks into smaller agents
-- Use `run_in_background: true` for long operations
+- Set `maxTurns` to cap long runs (Claude can resume the agent if it stops early)
 
 ### Agent Ignoring Instructions
 
 **Solution:**
-- Make activation triggers more specific
+- Remember the agent sees only its system prompt and Claude's delegation prompt, not your conversation
 - Add explicit constraints in Guidelines section
 - Use numbered steps in Process section
+- Enforce must-hold rules with hooks or permission rules instead of prompt text
+
+### Claude Doesn't Delegate to the Agent
+
+**Solution:**
+- Make the `description` more specific and add "use proactively"
+- Name the agent in your request ("use the db-migrator agent to ...")
+- @-mention it to guarantee it runs: `@"db-migrator (agent)"`
 
 ## Summary
 
@@ -1041,8 +1068,8 @@ Error: Agent 'my-agent' not found
 ---
 
 **Related:**
-- [Agents Guide](./agents-guide.md) - Using built-in agents
-- [Extended Thinking](./extended-thinking.md) - When to use thinking mode
+- [Agents Guide](./agents-guide.md) - Built-in and custom agents in practice
+- [Extended Thinking](./extended-thinking.md) - Effort levels and deeper reasoning
 - [Quick Reference](./quick-reference.md) - Claude Code essentials
 
 Back to [README](../README.md)

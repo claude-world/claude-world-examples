@@ -18,7 +18,7 @@
 
 ## Parallel Agents 解決方案
 
-Claude Code 可以同時啟動多個 agents：
+Claude Code 可以透過 Agent 工具（以前稱為 Task）同時啟動多個 subagents。每個 subagent 在自己的 context window 中工作，最後回報摘要：
 
 ```
 Agent 1：搜尋檔案         ─┐
@@ -30,7 +30,9 @@ Agent 5：分析程式碼庫      ─┘
 總計：5 秒（平行）= max(個別時間)
 ```
 
-**結果**：同樣的工作快 4 倍。
+**結果**：同樣的工作大約快 4 倍，而且主對話只會收到摘要。
+
+Claude 從主對話啟動的 subagents 預設在背景執行，所以它們執行時你可以繼續工作。按 `Ctrl+B` 可以把執行中的任務移到背景，`/tasks` 可以查看每個 subagent 的模型與狀態。預設最多可以同時執行 20 個 subagents（用 `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` 調整上限）。
 
 ## 何時使用 Parallel Agents
 
@@ -65,6 +67,7 @@ Agent 5：分析程式碼庫      ─┘
 - 任務依賴前一個結果
 - 簡單的單檔案操作
 - 需要維持嚴格順序時
+- 多個 agents 同時編輯相同檔案（為每個 agent 設定 `isolation: "worktree"`，或依序編輯）
 
 ## 實際運作方式
 
@@ -75,17 +78,17 @@ Agent 5：分析程式碼庫      ─┘
 「使用者驗證有 bug - 使用者會隨機被登出」
 ```
 
-Claude 啟動 5 個 parallel agents：
+Claude 啟動 5 個平行的 subagents：
 
 ```
 Agent 1（Explore）：分析 auth 模組結構
-Agent 2（Grep）：搜尋「logout」和「session」
-Agent 3（Grep）：搜尋 token 過期邏輯
-Agent 4（Read）：檢查 auth middleware
-Agent 5（Grep）：查看最近 auth 相關的 commits
+Agent 2（Explore）：搜尋「logout」和「session」
+Agent 3（Explore）：搜尋 token 過期邏輯
+Agent 4（Explore）：檢查 auth middleware
+Agent 5（general-purpose）：用 git log 查看最近 auth 相關的 commits
 ```
 
-所有 agents 在約 5 秒內完成。
+Grep、Read、Bash 是每個 subagent 使用的工具；Explore 與 general-purpose 才是 agent 類型。五項調查會同時進行，而不是一個接一個。
 
 Claude 然後綜合：
 ```
@@ -123,7 +126,7 @@ Agent 5：審查測試模式
 
 ### 2. 信任流程
 
-不要在 agents 執行時打斷 Claude。讓它們完成並綜合結果。
+讓 subagents 完成工作，再讓 Claude 綜合結果。它們在背景執行，所以你可以繼續工作，或用 `/tasks` 查看進度，而不必打斷它們。
 
 ### 3. 在 CLAUDE.md 提供脈絡
 
@@ -151,15 +154,15 @@ Agent 5：審查測試模式
 | 平行 | 5 秒 |
 | **加速** | **5x** |
 
-對於有 10 個以上子任務的複雜任務，parallel agents 可以提供 **10 倍或更多**的加速。
+對於有許多獨立子任務的複雜任務，加速幅度會隨 agents 數量增加，直到達到同時執行的上限。每個 subagent 也會消耗自己的 tokens，所以平行化是用成本換取時間。需要彼此協調的長時間平行工作，請參考 agent teams（實驗性，`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`）。
 
 ## 總結
 
-1. Claude Code 可以同時執行多個 agents
+1. Claude Code 可以平行執行多個 subagents，預設在背景執行
 2. 用於探索、bug 追蹤、程式碼審查和功能規劃
 3. 提供清晰的脈絡讓 agents 更聰明
 4. 信任流程 - 不要微觀管理
 
 ---
 
-回到 [README](../README.md)
+回到 [README](../../README.zh-TW.md)

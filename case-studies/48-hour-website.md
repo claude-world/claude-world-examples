@@ -242,6 +242,8 @@ Evening:
 - Content Collections for articles
 ```
 
+> **Today's practice:** CLAUDE.md is guidance, not enforcement. To make Claude Code actually ask before `git push`, add a permission rule such as `"ask": ["Bash(git push *)"]` to `.claude/settings.json`; see [CLAUDE.md Principles](../concepts/claude-md-principles.md).
+
 ### 2. Director Mode Mindset
 
 **Instead of**:

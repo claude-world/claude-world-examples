@@ -55,10 +55,10 @@ Let Claude figure out the details. Your job is outcomes, not steps.
 
 **Use**:
 ```
-"Explore authentication system (thoroughness: medium)"
+"Use subagents to explore the authentication system (thoroughness: medium)"
 ```
 
-Claude launches 5+ parallel agents automatically.
+Claude delegates independent searches to Explore subagents that run in parallel, each in its own context window, and report back summaries, keeping your main conversation clean.
 
 ### 3. Autonomous Execution
 
@@ -72,17 +72,25 @@ Claude: "Should I run the tests?"
 You: "Yes"
 ```
 
-**Use CLAUDE.md**:
-```markdown
-## Autonomous Operations
-- Create/modify source files
-- Run tests
-- Git commit (local only)
-
-## Requires Confirmation
-- Git push
-- Database changes
+**Use permission rules** in `.claude/settings.json`:
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm test *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(npm run migrate *)"
+    ]
+  }
+}
 ```
+
+Current Claude Code starts interactive sessions in auto mode by default, so routine edits and commands don't prompt, while explicit `ask` and `deny` rules still apply in every mode. Keep a matching "Autonomous Operations / Requires Confirmation" list in CLAUDE.md so Claude knows your intent, but CLAUDE.md alone doesn't enforce anything.
 
 ### 4. Review, Don't Supervise
 
@@ -110,13 +118,13 @@ You: [Reviews diff, approves or requests changes]
 
 2. DELEGATE
    ├── Give Claude the goal
-   ├── Let it explore and plan
+   ├── Let it explore and plan (plan mode: Shift+Tab)
    └── Trust the parallel execution
 
 3. REVIEW
    ├── Check the results
    ├── Verify tests pass
-   └── Approve or iterate
+   └── Approve, iterate, or /rewind
 
 4. SHIP
    ├── Commit the changes
@@ -205,7 +213,7 @@ Claude: "Feature complete. 8 files modified, 2 new files created.
 
 **AI-assisted approach** (~3 min):
 ```
-You: "Review PR #123"
+You: "Review PR #123"   (or run /review 123)
 
 Claude: [Parallel analysis]
         → Code quality check
@@ -251,6 +259,8 @@ Claude: "PR Review Summary:
 [Your test policy]
 ```
 
+Run `/init` to generate a starter, keep it under ~200 lines, and back the "Requires Confirmation" list with the permission rules shown above.
+
 ### 2. Use Session-Based Development
 
 ```
@@ -261,18 +271,20 @@ Session 4: "Create frontend components"
 Session 5: "Integration and testing"
 ```
 
-Each session = clear goal + autonomous execution + review.
+Each session = clear goal + autonomous execution + review. Run `/clear` between unrelated tasks; `claude --continue` or `/resume` picks a session back up.
 
 ### 3. Leverage Model Selection
 
 | Task Type | Model | Why |
 |-----------|-------|-----|
-| Exploration | Haiku 4.5 | Fast, cheap, good enough |
-| Implementation | Sonnet 4.6 | Best coding model |
-| Architecture | Opus 4.6 | Deep reasoning |
-| Security review | Opus 4.6 | Thorough analysis |
+| Quick lookups, simple edits | Haiku 5.5 | Fast and low-cost, for high-volume, latency-sensitive tasks |
+| Implementation | Sonnet 5.5 | The best combination of speed and intelligence |
+| Architecture | Opus 5.5 | Long-running agentic coding and knowledge work |
+| Security review | Opus 5.5 at `high` or `max` effort | Thorough analysis |
 
-Quick switch: `Option+P` (macOS) or `Alt+P` (Windows)
+Quick switch: `/model haiku|sonnet|opus`, or `Option+P` (macOS) / `Alt+P` (Windows/Linux). Tune depth with `/effort` (the 5.5 models default to `medium`), or add `ultrathink` to a single prompt. Opus 5.5 is the `default` model on Pro, Max, Team, Enterprise and API accounts. Fable 5.1 (`/model fable`), "for demanding reasoning and long-horizon agentic work", is never the default and bills to usage credits on some plans.
+
+The built-in Explore subagent runs on your main conversation's model. To explore on Haiku, define your own `Explore` subagent with `model: haiku`.
 
 ### 4. Trust the Process
 
@@ -304,10 +316,10 @@ Track these for your projects:
 ### Quality Metrics
 
 AI-assisted development often improves:
-- Test coverage (Claude writes tests by default)
+- Test coverage (Claude writes tests when your CLAUDE.md asks for them)
 - Documentation (Claude documents as it codes)
 - Consistency (Claude follows patterns exactly)
-- Security (Claude checks for common issues)
+- Security (Claude checks for common issues; run `/security-review` on your branch)
 
 ## Common Pitfalls
 
@@ -319,7 +331,7 @@ AI-assisted development often improves:
 ### 2. Not Trusting Parallel Agents
 
 **Problem**: Running searches one at a time
-**Solution**: Use "Explore" or let Claude parallelize
+**Solution**: Ask Claude to use subagents (such as Explore) or let it parallelize
 
 ### 3. Skipping CLAUDE.md
 
@@ -328,8 +340,8 @@ AI-assisted development often improves:
 
 ### 4. Wrong Model for Task
 
-**Problem**: Using Opus for simple searches
-**Solution**: Haiku for exploration, Sonnet for coding
+**Problem**: Using Opus at high effort for simple searches
+**Solution**: Haiku 5.5 or `/effort low` for quick lookups, Sonnet 5.5 or Opus 5.5 for coding
 
 ## The 48-Hour Mindset
 

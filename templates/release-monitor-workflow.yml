@@ -13,6 +13,9 @@
 # - ANTHROPIC_API_KEY: Claude API key
 # - DISCORD_WEBHOOK_URL: Discord webhook (optional)
 #
+# Optional repository variable:
+# - CREATE_RELEASE_ISSUES: set to "true" to open a tracking issue per release
+#
 # Documentation: https://github.com/claude-world/claude-world-examples
 
 name: Release Monitor
@@ -31,12 +34,16 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 env:
   # ============================================
   # CUSTOMIZE THESE VALUES
   # ============================================
   REPO_TO_MONITOR: owner/repo           # e.g., anthropics/claude-code
   VERSION_FILE: .github/last-known-version.txt
+  CLAUDE_MODEL: claude-haiku-5-5        # fast and inexpensive for short summaries
 
 jobs:
   # ============================================
@@ -48,83 +55,68 @@ jobs:
       contents: write
     outputs:
       new_release: ${{ steps.check.outputs.new_release }}
-      version: ${{ steps.check.outputs.version }}
-      release_name: ${{ steps.check.outputs.release_name }}
-      release_url: ${{ steps.check.outputs.release_url }}
-      release_body: ${{ steps.check.outputs.release_body }}
+      version: ${{ steps.fetch.outputs.version }}
+      release_name: ${{ steps.fetch.outputs.release_name }}
+      release_url: ${{ steps.fetch.outputs.release_url }}
+      release_body: ${{ steps.fetch.outputs.release_body }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/checkout@v7
 
       - name: Get latest release from target repo
         id: fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "Fetching latest release from ${{ env.REPO_TO_MONITOR }}..."
+          echo "Fetching latest release from $REPO_TO_MONITOR..."
 
-          RELEASE_JSON=$(curl -s "https://api.github.com/repos/${{ env.REPO_TO_MONITOR }}/releases/latest")
+          # gh api authenticates the request and fails on API errors
+          RELEASE_JSON=$(gh api "repos/$REPO_TO_MONITOR/releases/latest")
 
-          # Check for API errors
-          if echo "$RELEASE_JSON" | jq -e '.message' > /dev/null 2>&1; then
-            echo "Error: $(echo "$RELEASE_JSON" | jq -r '.message')"
-            exit 1
-          fi
-
-          VERSION=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
-          RELEASE_NAME=$(echo "$RELEASE_JSON" | jq -r '.name')
-          RELEASE_URL=$(echo "$RELEASE_JSON" | jq -r '.html_url')
-          RELEASE_BODY=$(echo "$RELEASE_JSON" | jq -r '.body // "No release notes"' | head -c 3000)
-
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
-          echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
-          echo "$RELEASE_BODY" > /tmp/release_body.txt
+          VERSION=$(jq -r '.tag_name' <<<"$RELEASE_JSON")
+          {
+            echo "version=$VERSION"
+            echo "release_name=$(jq -r '(.name // .tag_name) | gsub("[\r\n]"; " ")' <<<"$RELEASE_JSON")"
+            echo "release_url=$(jq -r '.html_url' <<<"$RELEASE_JSON")"
+            # Base64 encode for safe multi-line output
+            echo "release_body=$(jq -r '.body // "No release notes"' <<<"$RELEASE_JSON" | head -c 3000 | base64 -w 0)"
+          } >> "$GITHUB_OUTPUT"
 
           echo "Latest release: $VERSION"
 
       - name: Check if new release
         id: check
+        env:
+          LATEST_VERSION: ${{ steps.fetch.outputs.version }}
+          FORCE_NOTIFY: ${{ inputs.force_notify }}
         run: |
-          LATEST_VERSION="${{ steps.fetch.outputs.version }}"
-
-          if [ -f "${{ env.VERSION_FILE }}" ]; then
-            LAST_VERSION=$(cat "${{ env.VERSION_FILE }}")
-          else
-            LAST_VERSION="none"
-          fi
+          LAST_VERSION=$(cat "$VERSION_FILE" 2>/dev/null || echo "none")
 
           echo "Last known: $LAST_VERSION"
           echo "Latest: $LATEST_VERSION"
 
-          if [ "$LATEST_VERSION" != "$LAST_VERSION" ] || [ "${{ github.event.inputs.force_notify }}" == "true" ]; then
-            echo "new_release=true" >> $GITHUB_OUTPUT
+          if [ "$LATEST_VERSION" != "$LAST_VERSION" ] || [ "$FORCE_NOTIFY" = "true" ]; then
+            echo "new_release=true" >> "$GITHUB_OUTPUT"
             echo "🆕 New release detected!"
           else
-            echo "new_release=false" >> $GITHUB_OUTPUT
+            echo "new_release=false" >> "$GITHUB_OUTPUT"
             echo "✓ No new release"
           fi
 
-          echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
-          echo "release_name=${{ steps.fetch.outputs.release_name }}" >> $GITHUB_OUTPUT
-          echo "release_url=${{ steps.fetch.outputs.release_url }}" >> $GITHUB_OUTPUT
-
-          # Base64 encode for safe multi-line output
-          BODY_B64=$(base64 -w 0 /tmp/release_body.txt)
-          echo "release_body=$BODY_B64" >> $GITHUB_OUTPUT
-
       - name: Update last known version
         if: steps.check.outputs.new_release == 'true'
+        env:
+          LATEST_VERSION: ${{ steps.fetch.outputs.version }}
         run: |
-          mkdir -p $(dirname "${{ env.VERSION_FILE }}")
-          echo "${{ steps.check.outputs.version }}" > "${{ env.VERSION_FILE }}"
+          mkdir -p "$(dirname "$VERSION_FILE")"
+          echo "$LATEST_VERSION" > "$VERSION_FILE"
 
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add "${{ env.VERSION_FILE }}"
-          git diff --staged --quiet || git commit -m "chore: update last known version to ${{ steps.check.outputs.version }}"
-          git push || echo "Push failed or nothing to push"
+          git add "$VERSION_FILE"
+          git diff --staged --quiet || git commit -m "chore: update last known version to $LATEST_VERSION"
+          git push
 
   # ============================================
   # Job 2: Generate content with Claude API
@@ -148,10 +140,10 @@ jobs:
           RELEASE_BODY_B64: ${{ needs.check-release.outputs.release_body }}
         run: |
           # Decode release body
-          RELEASE_BODY=$(echo "$RELEASE_BODY_B64" | base64 -d)
+          RELEASE_BODY=$(base64 -d <<<"$RELEASE_BODY_B64")
 
-          # Create prompt
-          read -r -d '' PROMPT << 'PROMPT_EOF' || true
+          # Create prompt (the shell expands the variables; their contents are not executed)
+          PROMPT=$(cat <<EOF
           You are a developer advocate summarizing a software release.
 
           Release Info:
@@ -168,38 +160,42 @@ jobs:
           }
 
           Output ONLY valid JSON, no markdown.
-          PROMPT_EOF
+          EOF
+          )
 
-          # Substitute variables
-          PROMPT=$(echo "$PROMPT" | sed "s|\$VERSION|$VERSION|g; s|\$RELEASE_NAME|$RELEASE_NAME|g; s|\$RELEASE_URL|$RELEASE_URL|g")
-          PROMPT=$(echo "$PROMPT" | sed "s|\$RELEASE_BODY|$RELEASE_BODY|g")
+          # Build the request with jq so the prompt is escaped correctly
+          REQUEST=$(jq -n --arg model "$CLAUDE_MODEL" --arg prompt "$PROMPT" '{
+            model: $model,
+            max_tokens: 4096,
+            output_config: {effort: "low"},
+            messages: [{role: "user", content: $prompt}]
+          }')
 
           # Call Claude API
-          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
-            -H "Content-Type: application/json" \
+          RESPONSE=$(curl -sS https://api.anthropic.com/v1/messages \
+            -H "content-type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
-            -d "{
-              \"model\": \"claude-sonnet-4-20250514\",
-              \"max_tokens\": 1000,
-              \"messages\": [{\"role\": \"user\", \"content\": $(echo "$PROMPT" | jq -Rs .)}]
-            }")
+            -d "$REQUEST")
 
           # Check for API error
-          if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
-            echo "API Error: $(echo "$RESPONSE" | jq -r '.error.message')"
+          if jq -e '.error' <<<"$RESPONSE" > /dev/null; then
+            echo "API Error: $(jq -r '.error.message' <<<"$RESPONSE")"
             exit 1
           fi
 
-          # Extract content
-          CONTENT=$(echo "$RESPONSE" | jq -r '.content[0].text')
+          # Extract content. Current models can return a thinking block before
+          # the text, so never read .content[0] directly.
+          CONTENT=$(jq -r '[.content[] | select(.type == "text") | .text] | join("")' <<<"$RESPONSE" | sed '/^```/d')
 
           # Parse JSON and set outputs
-          SUMMARY=$(echo "$CONTENT" | jq -r '.summary')
-          FEATURES=$(echo "$CONTENT" | jq -r '.features')
+          SUMMARY=$(jq -r '.summary' <<<"$CONTENT")
+          FEATURES=$(jq -r '.features' <<<"$CONTENT")
 
-          echo "summary=$(echo "$SUMMARY" | base64 -w 0)" >> $GITHUB_OUTPUT
-          echo "features=$(echo "$FEATURES" | base64 -w 0)" >> $GITHUB_OUTPUT
+          {
+            echo "summary=$(printf '%s' "$SUMMARY" | base64 -w 0)"
+            echo "features=$(printf '%s' "$FEATURES" | base64 -w 0)"
+          } >> "$GITHUB_OUTPUT"
 
           echo "Generated summary: $SUMMARY"
 
@@ -209,9 +205,6 @@ jobs:
   notify-discord:
     needs: [check-release, generate-content]
     runs-on: ubuntu-latest
-    if: |
-      needs.check-release.outputs.new_release == 'true' &&
-      vars.DISCORD_WEBHOOK_URL != ''
 
     steps:
       - name: Send Discord notification
@@ -222,37 +215,33 @@ jobs:
           SUMMARY_B64: ${{ needs.generate-content.outputs.summary }}
           FEATURES_B64: ${{ needs.generate-content.outputs.features }}
         run: |
-          SUMMARY=$(echo "$SUMMARY_B64" | base64 -d)
-          FEATURES=$(echo "$FEATURES_B64" | base64 -d)
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "Discord webhook not configured, skipping"
+            exit 0
+          fi
 
-          # Escape special characters for JSON
-          SUMMARY_ESCAPED=$(echo "$SUMMARY" | jq -Rs . | sed 's/^"//;s/"$//')
-          FEATURES_ESCAPED=$(echo "$FEATURES" | jq -Rs . | sed 's/^"//;s/"$//')
-
-          curl -X POST "$DISCORD_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"embeds\": [{
-                \"title\": \"🚀 New Release: $VERSION\",
-                \"description\": \"$SUMMARY_ESCAPED\",
-                \"url\": \"$RELEASE_URL\",
-                \"color\": 5763719,
-                \"fields\": [
-                  {
-                    \"name\": \"✨ What's New\",
-                    \"value\": \"$FEATURES_ESCAPED\"
-                  },
-                  {
-                    \"name\": \"🔗 Links\",
-                    \"value\": \"[View Release]($RELEASE_URL)\"
-                  }
-                ],
-                \"footer\": {
-                  \"text\": \"Release Monitor\"
-                },
-                \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
-              }]
-            }"
+          # jq escapes special characters for JSON
+          jq -n \
+            --arg version "$VERSION" \
+            --arg url "$RELEASE_URL" \
+            --arg summary "$(base64 -d <<<"$SUMMARY_B64")" \
+            --arg features "$(base64 -d <<<"$FEATURES_B64")" \
+            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{embeds: [{
+              title: "🚀 New Release: \($version)",
+              description: $summary,
+              url: $url,
+              color: 5763719,
+              fields: [
+                {name: "✨ Highlights", value: ($features | .[0:1024])},
+                {name: "🔗 Links", value: "[View Release](\($url))"}
+              ],
+              footer: {text: "Release Monitor"},
+              timestamp: $timestamp
+            }]}' |
+            curl -sS --fail-with-body -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d @-
 
           echo "✅ Discord notification sent"
 
@@ -261,26 +250,31 @@ jobs:
   # ============================================
   create-issue:
     needs: [check-release, generate-content]
+    # Enable by setting the repository variable CREATE_RELEASE_ISSUES to "true"
+    if: vars.CREATE_RELEASE_ISSUES == 'true'
     runs-on: ubuntu-latest
-    if: |
-      needs.check-release.outputs.new_release == 'true' &&
-      false  # Set to true to enable
     permissions:
       issues: write
 
     steps:
       - name: Create tracking issue
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.check-release.outputs.version }}
           RELEASE_URL: ${{ needs.check-release.outputs.release_url }}
           SUMMARY_B64: ${{ needs.generate-content.outputs.summary }}
         run: |
-          SUMMARY=$(echo "$SUMMARY_B64" | base64 -d)
+          SUMMARY=$(base64 -d <<<"$SUMMARY_B64")
+
+          # gh issue create fails on unknown labels, so make sure this one exists
+          gh label create release-tracking --color 0E8A16 --description "New upstream release" --force
 
           gh issue create \
             --title "🆕 New release: $VERSION" \
-            --body "## Release Summary
+            --label "release-tracking" \
+            --body "$(cat <<EOF
+          ## Release Summary
 
           $SUMMARY
 
@@ -293,8 +287,9 @@ jobs:
           - [ ] Review changes
           - [ ] Update dependencies
           - [ ] Test compatibility
-          - [ ] Update documentation" \
-            --label "release-tracking"
+          - [ ] Update documentation
+          EOF
+          )"
 
 # ============================================
 # CUSTOMIZATION NOTES
@@ -318,6 +313,10 @@ jobs:
 #    - Add generate-newsletter job
 #    - Use Claude API to generate markdown articles
 #    - Commit and push to repository
+#
+# 5. Let Claude Code act on the release (open a PR, update docs):
+#    - Use anthropics/claude-code-action@v1, see
+#      templates/github-actions-suite/claude.yml
 #
 # See full example at:
 # https://github.com/claude-world/claude-world-examples/blob/main/examples/github-actions-automation.md

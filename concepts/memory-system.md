@@ -1,6 +1,6 @@
 # Memory System Basics
 
-> Build persistent project intelligence with the Memory MCP - never lose context between sessions again.
+> Build persistent project intelligence with Claude Code's built-in memory, and add the Memory MCP when you want an explicit knowledge graph - never lose context between sessions again.
 
 ## The Problem: Session Amnesia
 
@@ -14,7 +14,26 @@ Session 3: [Repeats same discussion]
 
 This is **institutional memory failure**.
 
-## The Solution: Memory MCP
+## Built-in Memory: CLAUDE.md and Auto Memory
+
+Claude Code ships two memory layers, and both load at the start of every session:
+
+| | CLAUDE.md files | Auto memory |
+|---|---|---|
+| **Who writes it** | You (or Claude, when you ask) | Claude, on its own |
+| **What it holds** | Instructions: commands, conventions, architecture | Learnings: your preferences, corrections, project context |
+| **Where** | `./CLAUDE.md`, `~/.claude/CLAUDE.md`, `.claude/rules/` | `~/.claude/projects/<project>/memory/` |
+| **Loaded** | In full, every session | The first 200 lines (or 25KB) of the `MEMORY.md` index, then topic files on demand |
+
+- Run `/memory` to open these files and to turn auto memory on or off.
+- Say "remember that we use Zod for all API validation" and Claude can save it to auto memory. For a rule the whole team should follow, ask Claude to add it to CLAUDE.md instead.
+- Subagents can keep their own memory with the `memory:` frontmatter field (`user`, `project`, or `local`).
+
+For most projects this is enough. See [CLAUDE.md Principles](./claude-md-principles.md) for writing good instructions.
+
+## Optional: The Memory MCP Knowledge Graph
+
+Add the Memory MCP server when you want knowledge that is structured and queryable rather than prose: entities linked by relations, a graph the whole team shares through the repository, or more facts than a 200-line index can hold.
 
 The Memory MCP creates a **persistent knowledge graph** that stores:
 
@@ -46,7 +65,7 @@ The Memory MCP creates a **persistent knowledge graph** that stores:
 ```bash
 # CRITICAL: Use MEMORY_FILE_PATH for project isolation
 claude mcp add --scope project memory \
-  -e MEMORY_FILE_PATH=./.claude/memory.json \
+  -e MEMORY_FILE_PATH=./.claude/memory.jsonl \
   -- npx -y @modelcontextprotocol/server-memory
 ```
 
@@ -61,7 +80,7 @@ claude mcp add --scope project memory \
 claude mcp list
 
 # Should show:
-# memory (project) - @modelcontextprotocol/server-memory
+# memory: npx -y @modelcontextprotocol/server-memory - ✓ Connected
 ```
 
 ### Step 3: Initialize
@@ -74,16 +93,21 @@ In Claude Code:
 
 Claude creates entities for project, tech stack, and key decisions.
 
-## Core Commands
+## Core Tools
 
-| Command | Description |
-|---------|-------------|
-| `/memory-save` | Save knowledge to graph |
-| `/memory-search` | Search stored knowledge |
-| `/memory-list` | List all entities |
-| `/memory-audit` | Find stale/duplicate entries |
+The server gives Claude these tools. You don't call them yourself: ask in plain language and Claude picks the right one.
 
-### Natural Language Works Too
+| Tool | Description |
+|------|-------------|
+| `create_entities` / `create_relations` | Save new knowledge to the graph |
+| `add_observations` | Add facts to an existing entity |
+| `search_nodes` | Search names, types, and observations |
+| `open_nodes` / `read_graph` | Read specific entities or the whole graph |
+| `delete_entities` / `delete_observations` / `delete_relations` | Remove stale knowledge |
+
+The built-in `/memory` command manages CLAUDE.md and auto memory files, not this graph. Commands such as `/memory-save` or `/memory-audit` exist only if a plugin or your own skills add them.
+
+### Ask in Natural Language
 
 ```
 "Save this decision to memory: We chose PostgreSQL for JSONB support"
@@ -181,7 +205,7 @@ Files: auth/refresh.ts"
 ### Pattern 4: Monthly Audit
 
 ```
-/memory-audit
+"Audit the memory graph: list stale, duplicate, or contradictory entries"
 ```
 
 Then clean up:
@@ -189,7 +213,9 @@ Then clean up:
 "Clean up outdated observations about the old auth system"
 ```
 
-## Memory JSON Structure
+## Knowledge Graph Structure
+
+The server stores the graph as JSON Lines in `MEMORY_FILE_PATH`; `read_graph` returns it in this shape:
 
 ```json
 {
@@ -218,20 +244,21 @@ Then clean up:
 
 | Option | Path | Use Case |
 |--------|------|----------|
-| **Project** (Recommended) | `./.claude/memory.json` | Team-shared, committed to repo |
-| **User** | `~/.claude/memory.json` | Personal patterns, cross-project |
-| **Hybrid** | Both | Project decisions + personal prefs |
+| **Built-in auto memory** | `~/.claude/projects/<project>/memory/` | Personal learnings per repository (on by default, not shared) |
+| **Project graph** (Recommended for teams) | `./.claude/memory.jsonl` | Team-shared, committed to repo |
+| **User graph** | `~/.claude/memory.jsonl` | Personal patterns, cross-project |
+| **Hybrid** | Both graphs | Project decisions + personal prefs |
 
 ## Memory vs CLAUDE.md
 
-| Use Memory For | Use CLAUDE.md For |
-|----------------|-------------------|
-| Decisions & rationale | Static policies |
-| Bug fixes & resolutions | Tool configurations |
-| Evolving patterns | Project structure |
-| Session-to-session context | Workflow definitions |
+| Use CLAUDE.md For | Use Auto Memory For | Use the Memory MCP For |
+|-------------------|---------------------|------------------------|
+| Static policies and rules | Your preferences and corrections | Decisions & rationale as linked entities |
+| Build and test commands | Context Claude learns as it works | Bug fixes & resolutions to query later |
+| Project structure | Facts that change over time | Team knowledge shared through the repo |
+| Workflow definitions | Personal, per-machine notes | Relations between components |
 
-**Key difference:** Memory is queryable and on-demand (low context cost). CLAUDE.md is always loaded (high context cost).
+**Key difference:** CLAUDE.md is always loaded in full, so keep it under about 200 lines. Auto memory loads a short index and reads topic files when needed. The Memory MCP graph is queried on demand. None of them enforce anything; use permissions or hooks for rules that must hold.
 
 ## Best Practices
 
@@ -283,19 +310,21 @@ Observations:
 
 ### Search Not Finding Results
 
-1. Entity names are case-sensitive
+1. Search is a case-insensitive substring match on names, types, and observations, so try a shorter term
 2. Use broader search terms
 3. Check observations contain search terms
 
 ### Duplicate Entities
 
-1. Run `/memory-audit`
+1. Ask Claude to audit the graph for duplicates
 2. Merge duplicates: "Merge entity A and B"
 3. Update relations to merged entity
 
 ## Integration with Workflows
 
 ### With /workflow
+
+`/workflow` comes from the community [director-mode-lite](https://github.com/claude-world/director-mode-lite) plugin; any implementation request works the same way:
 
 ```
 "Implement user profile editing based on our
@@ -320,9 +349,9 @@ Memory provides continuity across all sessions.
 ## Getting Started Checklist
 
 **Today:**
-- [ ] Add Memory MCP to your project
-- [ ] Save one architecture decision
-- [ ] Try `/memory-search`
+- [ ] Run `/memory` and check that auto memory is on
+- [ ] Save one architecture decision (CLAUDE.md or the graph)
+- [ ] Add the Memory MCP if you want a shared knowledge graph
 
 **This week:**
 - [ ] Build initial knowledge graph
@@ -332,7 +361,7 @@ Memory provides continuity across all sessions.
 **This month:**
 - [ ] Complete knowledge graph coverage
 - [ ] Establish team conventions
-- [ ] Schedule regular `/memory-audit`
+- [ ] Schedule a regular memory audit
 
 ---
 

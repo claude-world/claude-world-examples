@@ -169,16 +169,24 @@ Define what NOT to build:
 
 ### Step 1: Write the Spec
 
-Write your specification in a markdown file:
+Write your specification in a markdown file (for example `SPEC.md`):
 
 ```
-You: "I'm going to write a spec for magic link authentication.
+You: "I've written a spec for magic link authentication in @SPEC.md.
      Review it and ask clarifying questions before we implement."
+```
+
+Starting from a blank page? Let Claude interview you and draft the spec:
+
+```
+You: "I want to add passwordless magic link login. Interview me in detail
+     using the AskUserQuestion tool about implementation, edge cases,
+     security and tradeoffs, then write a complete spec to SPEC.md."
 ```
 
 ### Step 2: Clarification Round
 
-Let Claude identify gaps:
+Let Claude identify gaps. Run this round in plan mode (press `Shift+Tab` until the status bar shows `⏸ plan mode on`, or type `/plan`) so Claude can read the codebase and ask questions without editing any files:
 
 ```
 Claude: "I have a few questions about the spec:
@@ -216,10 +224,10 @@ Update based on answers:
 
 ### Step 4: Implementation
 
-Now Claude implements with clarity:
+Now Claude implements with clarity. Switch out of plan mode with `Shift+Tab`, and if the spec discussion ran long, start a fresh session with `/clear` so implementation begins with clean context and the written spec as its reference:
 
 ```
-You: "Implement the magic link authentication per the spec.
+You: "Implement the magic link authentication per @SPEC.md.
      Check off acceptance criteria as you complete them."
 
 Claude: [Implements with clear understanding]
@@ -227,12 +235,14 @@ Claude: [Implements with clear understanding]
         [Documents any deviations from spec]
 ```
 
+Every prompt creates a checkpoint. If an approach goes wrong, press `Esc` twice or run `/rewind` to restore the code and conversation, then try another way. Checkpoints only cover Claude's file edits, so keep committing to git.
+
 ### Step 5: Verification
 
-Review against spec:
+Review against spec. A subagent checks the work in a fresh context, without the reasoning that produced it:
 
 ```
-You: "Verify the implementation against the spec.
+You: "Use a subagent to verify the implementation against @SPEC.md.
      List any criteria not yet met."
 
 Claude: "Verification Results:
@@ -246,6 +256,8 @@ Recommended actions:
 1. Add rate limiting tests
 2. Investigate SendGrid latency"
 ```
+
+For a correctness pass on the same diff, run `/code-review`.
 
 ## Advanced Patterns
 
@@ -285,9 +297,10 @@ describe('Magic Link Authentication', () => {
     });
 
     it('creates magic link valid for 15 minutes', async () => {
-      const { token, expiresAt } = await requestMagicLink('new@example.com');
+      const { expiresAt } = await requestMagicLink('new@example.com');
       const validity = expiresAt - Date.now();
-      expect(validity).toBe(15 * 60 * 1000);
+      expect(validity).toBeGreaterThan(14 * 60 * 1000);
+      expect(validity).toBeLessThanOrEqual(15 * 60 * 1000);
     });
 
     // ... more tests matching criteria
